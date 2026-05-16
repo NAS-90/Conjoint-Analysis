@@ -176,9 +176,12 @@ def write_distance_summary(dist_df: pd.DataFrame, neighbors_df: pd.DataFrame, pa
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--excel", type=str, default=FILE_PATH)
+parser.add_argument("--product-col", dest="product_col", type=str, default=PRODUCT_COL,
+                    help="Column in the Edited sheet to use as the product/row label.")
 args, _ = parser.parse_known_args()
 
 FILE_PATH = args.excel
+PRODUCT_COL = args.product_col
 
 # =========================
 #            MAIN
