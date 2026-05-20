@@ -2,12 +2,12 @@
 
 - Repository: Selennsta/Distance-Analysis
 - Scripts executed:
-  - preprocessing_smartphones.py → preprocessed_output.csv
+  - preprocessing.py (universal `Feature_data` preprocessor) → preprocessed_output.csv
   - compute_distance_matrix.py → distance_matrix.csv, nearest_neighbors.csv, distance_summary.txt
 - Distance metric: Euclidean
 - Feature scaling: StandardScaler (SCALE_ALL_FEATURES = True)
 
-- Input after preprocessing: n = 1020 products, d = 350 features (after encoding)
+- Input after preprocessing: n = 1020 products, d = 351 features (after encoding)
 - Distance matrix output: distance_matrix.csv (1020 × 1020)
 - Nearest neighbors output: nearest_neighbors.csv (top_k = 5)
 
@@ -17,7 +17,7 @@
 - Diagonal max abs: 0.0
 - Symmetry max abs: 0.0
 - Min value: 0.0
-- Max value: 67.87450506037533
+- Max value: 67.51922159905743
 - NaN count: 0
 - Inf count: 0
 

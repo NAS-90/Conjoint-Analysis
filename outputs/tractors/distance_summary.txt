@@ -1,14 +1,14 @@
 === Distance Matrix Summary (off-diagonal) ===
 n_products: 166
 min:   0.000000
-mean:  8.316436
-median:8.356411
-max:   19.176107
+mean:  8.489085
+median:8.383702
+max:   21.017634
 
 === Nearest Neighbor Distance Summary (rank=1) ===
 min:   0.000000
-mean:  0.489701
-median:0.319622
+mean:  0.578027
+median:0.326354
 max:   4.681649
 
 Note: SCALE_ALL_FEATURES is enabled -> all columns standardized before Euclidean distance.

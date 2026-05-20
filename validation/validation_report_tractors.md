@@ -3,7 +3,7 @@
 ## Setup
 - Repository: bingying-wu/Distance-Analysis
 - Scripts executed:
-  - preprocessing.py → preprocessed_output.csv
+  - preprocessing.py (universal `Feature_data` preprocessor) → preprocessed_output.csv
   - compute_distance_matrix.py → distance_matrix.csv, nearest_neighbors.csv, distance_summary.txt
 - Distance metric: Euclidean
 - Input after preprocessing: n = 166 products, d = 43 features (after encoding)
@@ -15,7 +15,7 @@
 - Diagonal max abs: 0.0
 - Symmetry max abs: 0.0
 - Min value: 0.0
-- Max value: 19.17610720169949
+- Max value: 21.017633973350147
 - NaN count: 0
 - Inf count: 0
 

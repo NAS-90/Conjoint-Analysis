@@ -1,4 +1,4 @@
-price,weight,wheel_size,frame_material_aluminum,frame_material_carbon,disc_brakes,gears_1x8,gears_2x10,gears_2x11
-1200.0,9.5,28.0,False,True,1,False,False,True
-1150.0,9.7,28.0,False,True,1,False,True,False
-600.0,14.0,26.0,True,False,0,True,False,False
+price,weight,wheel_size,frame_material_aluminum,frame_material_carbon,disc_brakes,gears
+0.0,1.0,1.0,False,True,1,22.0
+0.08333333333333337,0.9555555555555557,1.0,False,True,1,20.0
+1.0,0.0,0.0,True,False,0,8.0
