@@ -12,7 +12,7 @@ from sklearn.preprocessing import StandardScaler
 # =========================
 FILE_PATH = "Database_Distance Analysis.xlsx"
 DATA_SHEET = "Edited"
-PRODUCT_COL = "product"
+PRODUCT_COL_CANDIDATES = ["product_id", "product", "model", "brand"]
 
 INPUT_CSV = "preprocessed_output.csv"
 OUTPUT_DISTANCE_CSV = "distance_matrix.csv"
@@ -109,6 +109,18 @@ def make_unique_names(names: list[str]) -> list[str]:
     return out
 
 
+def infer_product_col(excel_path: str, sheet: str) -> str:
+    columns = pd.read_excel(excel_path, sheet_name=sheet, nrows=0).columns.tolist()
+    for candidate in PRODUCT_COL_CANDIDATES:
+        if candidate in columns:
+            return candidate
+    raise ValueError(
+        "Could not infer product label column. Expected one of: "
+        + ", ".join(PRODUCT_COL_CANDIDATES)
+        + f". Available columns: {columns}"
+    )
+
+
 def load_product_names(excel_path: str, sheet: str, product_col: str, n_rows: int) -> list[str]:
     df = pd.read_excel(excel_path, sheet_name=sheet, usecols=[product_col])
     names = df[product_col].astype(str).tolist()
@@ -176,8 +188,9 @@ def write_distance_summary(dist_df: pd.DataFrame, neighbors_df: pd.DataFrame, pa
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--excel", type=str, default=FILE_PATH)
-parser.add_argument("--product-col", dest="product_col", type=str, default=PRODUCT_COL,
-                    help="Column in the Edited sheet to use as the product/row label.")
+parser.add_argument("--product-col", dest="product_col", type=str, default=None,
+                    help="Column in the Edited sheet to use as the product/row label. "
+                         "Defaults to auto-detecting product_id, product, model, then brand.")
 args, _ = parser.parse_known_args()
 
 FILE_PATH = args.excel
@@ -195,7 +208,8 @@ def main():
     df_raw = pd.read_csv(INPUT_CSV)
     n_rows = len(df_raw)
 
-    product_names = load_product_names(FILE_PATH, DATA_SHEET, PRODUCT_COL, n_rows)
+    product_col = PRODUCT_COL or infer_product_col(FILE_PATH, DATA_SHEET)
+    product_names = load_product_names(FILE_PATH, DATA_SHEET, product_col, n_rows)
 
     X_df = coerce_dataframe_to_numeric(df_raw).astype(FLOAT_DTYPE)
 
@@ -218,6 +232,7 @@ def main():
 
     print("Task 3 Complete.")
     print(f"Input: {INPUT_CSV} (n={X.shape[0]}, d={X.shape[1]})")
+    print(f"Product label column: {product_col}")
     print(f"SCALE_ALL_FEATURES: {SCALE_ALL_FEATURES}")
     print(f"Distance matrix: {OUTPUT_DISTANCE_CSV} (shape={dist_df.shape})")
     print(f"Nearest neighbors: {OUTPUT_NEIGHBORS_CSV} (top_k={TOP_K_NEIGHBORS})")
