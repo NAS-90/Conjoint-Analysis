@@ -1,0 +1,10 @@
+# Distance-Analysis runtime dependencies.
+# Pinned to the versions used by the team's reference environment (May 2026).
+# Bump deliberately; the dashboard layout is sensitive to streamlit minor versions.
+
+streamlit==1.57.0
+pandas==3.0.3
+numpy==2.4.5
+scikit-learn==1.8.0
+plotly==6.7.0
+openpyxl==3.1.5

@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# macOS
+.DS_Store
+
 # C extensions
 *.so
 
@@ -193,6 +196,11 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Generated outputs
+outputs/
+preprocessed_output*.csv
+preprocessed_output*.xlsx
 
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to

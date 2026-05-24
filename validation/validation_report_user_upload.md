@@ -2,12 +2,12 @@
 
 - Repository: Selensta/Distance-Analysis
 - Scripts executed:
-  - distance_matrix.py --excel "templates/custom_product_template.xlsx" → preprocessed_output.csv
+  - preprocessing.py --excel "templates/custom_product_template.xlsx" → preprocessed_output.csv
   - compute_distance_matrix.py --excel "templates/custom_product_template.xlsx" → distance_matrix.csv, nearest_neighbors.csv, distance_summary.txt
 - Distance metric: Euclidean
 - Feature scaling: StandardScaler (SCALE_ALL_FEATURES = True)
 
-- Input after preprocessing: n = 3 products, d = 9 features (after encoding)
+- Input after preprocessing: n = 3 products, d = 7 features (after encoding)
 - Distance matrix output: distance_matrix.csv (3 x 3)
 - Nearest neighbors output: nearest_neighbors.csv (top_k = 5)
 
@@ -19,7 +19,7 @@
 - Diagonal max abs: 0.0
 - Symmetry max abs: 0.0
 - Min value: 0.0
-- Max value: 6.047459620974888
+- Max value: 5.718362951410651
 - NaN count: 0
 - Inf count: 0
 

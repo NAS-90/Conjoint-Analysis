@@ -22,6 +22,14 @@ python compute_distance_matrix.py
 python preprocessing.py --excel <your_file.xlsx>
 python compute_distance_matrix.py --excel <your_file.xlsx>
 ```
+
+`preprocessing.py` is the universal preprocessor for all product categories.
+It reads the workbook's `Edited` and `Feature_data` sheets, applies the
+metadata rules, and writes one numeric `preprocessed_output.csv` for the
+distance step.
+`compute_distance_matrix.py` auto-detects the product label column from
+`product_id`, `product`, `model`, then `brand`; override with
+`--product-col` if needed.
 ## Output
 The tool generates:
 - preprocessed_output.csv
