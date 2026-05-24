@@ -12,7 +12,10 @@ from sklearn.preprocessing import StandardScaler
 # =========================
 FILE_PATH = "Database_Distance Analysis.xlsx"
 DATA_SHEET = "Edited"
-PRODUCT_COL_CANDIDATES = ["product_id", "product", "model", "brand"]
+# Different datasets label their rows differently (tractors use "product",
+# smartphones use "model"). Auto-detect by trying these in order; override
+# with --product-col.
+PRODUCT_COL_CANDIDATES = ["product_id", "product", "model", "brand", "name"]
 
 INPUT_CSV = "preprocessed_output.csv"
 OUTPUT_DISTANCE_CSV = "distance_matrix.csv"
@@ -109,15 +112,29 @@ def make_unique_names(names: list[str]) -> list[str]:
     return out
 
 
-def infer_product_col(excel_path: str, sheet: str) -> str:
+def resolve_product_col(excel_path: str, sheet: str, requested: str | None) -> str:
+    """Resolve the product-label column, validating against the sheet header.
+
+    If `requested` is given it must exist in the sheet; otherwise auto-detect
+    using PRODUCT_COL_CANDIDATES. Both paths fail with a clear, actionable error.
+    """
     columns = pd.read_excel(excel_path, sheet_name=sheet, nrows=0).columns.tolist()
+
+    if requested is not None:
+        if requested in columns:
+            return requested
+        raise ValueError(
+            f"--product-col '{requested}' not found in sheet '{sheet}'. "
+            f"Available columns: {columns}."
+        )
+
     for candidate in PRODUCT_COL_CANDIDATES:
         if candidate in columns:
             return candidate
     raise ValueError(
-        "Could not infer product label column. Expected one of: "
-        + ", ".join(PRODUCT_COL_CANDIDATES)
-        + f". Available columns: {columns}"
+        "Could not infer the product label column. Expected one of: "
+        f"{PRODUCT_COL_CANDIDATES}. Available columns in sheet '{sheet}': {columns}. "
+        "Pass --product-col <name> to specify it explicitly."
     )
 
 
@@ -188,9 +205,14 @@ def write_distance_summary(dist_df: pd.DataFrame, neighbors_df: pd.DataFrame, pa
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--excel", type=str, default=FILE_PATH)
-parser.add_argument("--product-col", dest="product_col", type=str, default=None,
-                    help="Column in the Edited sheet to use as the product/row label. "
-                         "Defaults to auto-detecting product_id, product, model, then brand.")
+parser.add_argument(
+    "--product-col",
+    dest="product_col",
+    type=str,
+    default=None,
+    help="Column in the Edited sheet to use as the product/row label. "
+         f"Defaults to auto-detecting one of {PRODUCT_COL_CANDIDATES}.",
+)
 args, _ = parser.parse_known_args()
 
 FILE_PATH = args.excel
@@ -208,7 +230,7 @@ def main():
     df_raw = pd.read_csv(INPUT_CSV)
     n_rows = len(df_raw)
 
-    product_col = PRODUCT_COL or infer_product_col(FILE_PATH, DATA_SHEET)
+    product_col = resolve_product_col(FILE_PATH, DATA_SHEET, PRODUCT_COL)
     product_names = load_product_names(FILE_PATH, DATA_SHEET, product_col, n_rows)
 
     X_df = coerce_dataframe_to_numeric(df_raw).astype(FLOAT_DTYPE)
