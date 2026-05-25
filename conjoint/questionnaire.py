@@ -322,6 +322,43 @@ def write_responses_template(spec: QuestionnaireSpec, path: PathLike) -> Path:
     return target
 
 
+def responses_from_answers(
+    answers: list[dict[str, int]],
+    spec: QuestionnaireSpec,
+    *,
+    respondent_ids: list[object] | None = None,
+) -> pd.DataFrame:
+    """Assemble a ``responses.csv`` frame from collected per-respondent answers.
+
+    ``answers`` is one dict per respondent mapping ``{attribute}__{level_code}``
+    columns (the :func:`conjoint.io.response_column` contract) to integer
+    ratings. Columns are emitted in the canonical
+    :func:`response_columns` order so the result feeds ``conjoint.estimate``
+    directly. ``respondent_ids`` defaults to ``1..N``.
+
+    The inputs are never mutated. Use :func:`validate_responses` on the result
+    to surface any out-of-scale or missing-column problems.
+    """
+    columns = response_columns(spec)
+    if respondent_ids is None:
+        respondent_ids = list(range(1, len(answers) + 1))
+    elif len(respondent_ids) != len(answers):
+        raise ValueError(
+            f"respondent_ids length {len(respondent_ids)} != answers length "
+            f"{len(answers)}"
+        )
+
+    records: list[dict[str, object]] = []
+    for respondent, answer in zip(respondent_ids, answers):
+        row: dict[str, object] = {RESPONDENT_COL: respondent}
+        for column in columns:
+            row[column] = answer.get(column)
+        records.append(row)
+
+    frame_columns = [RESPONDENT_COL, *columns]
+    return pd.DataFrame(records, columns=frame_columns)
+
+
 def validate_responses(df: pd.DataFrame, spec: QuestionnaireSpec) -> list[str]:
     """Validate a responses frame against ``spec``; return a list of problems.
 
