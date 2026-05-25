@@ -3,7 +3,9 @@ import pandas as pd
 import os
 
 from dashboard.viz import (
+    dataset_paths,
     load_distance_matrix,
+    load_neighbors_table,
     load_preprocessed_numeric,
     compute_pca_embedding,
     plot_embedding_2d,
@@ -13,6 +15,12 @@ from dashboard.viz import (
     get_available_numeric_features,
     compute_raw_feature_view,
     plot_raw_feature_scatter_2d,
+)
+from dashboard.comparison import (
+    build_side_by_side_neighbors,
+    load_importance,
+    plot_importance_pie,
+    resolve_view,
 )
 
 st.set_page_config(page_title="Strategic Product Optimizer", layout="wide")
@@ -27,10 +35,35 @@ category = st.sidebar.selectbox(
 folder_name = category.lower().replace(" ", "_")
 base_path = os.path.join("outputs", folder_name)
 
-nn_path = os.path.join(base_path, "nearest_neighbors.csv")
-summary_path = os.path.join(base_path, "distance_summary.txt")
-dm_path = os.path.join(base_path, "distance_matrix.csv")
+paths = dataset_paths("outputs", folder_name)
+
+# --- VIEW TOGGLE: technical vs customer-weighted (Module 5) ---
+view_label = st.sidebar.radio(
+    "View",
+    ["Technical", "Customer-weighted"],
+    help=(
+        "Technical: uniform-weight distance over all preprocessed features. "
+        "Customer-weighted: distance re-scaled by conjoint relative importance "
+        "(Module 4). Falls back to technical when weighted artifacts are absent."
+    ),
+)
+requested_view = "weighted" if view_label == "Customer-weighted" else "technical"
+
+# Resolve which distance/neighbour artifacts to use; degrade gracefully.
+resolved = resolve_view(paths, requested_view)
+nn_path = str(resolved["nn"])
+dm_path = str(resolved["dm"])
 pre_path = os.path.join(base_path, "preprocessed_output.csv")
+summary_path = os.path.join(base_path, "distance_summary.txt")
+active_view = resolved["view"]
+
+if resolved["fell_back"]:
+    st.info(str(resolved["reason"]))
+
+if active_view == "weighted":
+    st.caption("Distance view: **Customer-weighted** (conjoint relative importance).")
+else:
+    st.caption("Distance view: **Technical** (uniform feature weighting).")
 
 # --- DISPLAY SUMMARY STATS ---
 if os.path.exists(summary_path):
@@ -39,6 +72,10 @@ if os.path.exists(summary_path):
     st.sidebar.info(f"**Category Summary:**\n\n{summary_text}")
 
 # --- PRE-LOAD NUMERIC DATA (needed for feature comparison + PCA) ---
+# NOTE: PCA / raw scatter always read the *technical* preprocessed feature
+# matrix (preprocessed_output.csv). The customer-weighted view only re-scales
+# the distance matrix + neighbours; it does not change the underlying feature
+# space, so the spatial layout (PCA, raw scatter) stays comparable across views.
 pre = None
 dm = None
 if os.path.exists(pre_path):
@@ -127,6 +164,56 @@ if os.path.exists(nn_path):
                            "This product fills a unique gap in the portfolio — protect and develop it.")
 
         st.caption("Alert Logic: 🔴 Cannibalization < 0.05 | 🟡 Overlap < 0.50 | 🟢 Unique > 0.50")
+
+    # --- Module 5: Customer importance + technical vs weighted comparison ---
+    importance_path = paths["importance"]
+    comp_col1, comp_col2 = st.columns([1, 1])
+
+    with comp_col1:
+        st.subheader("Customer Importance")
+        if importance_path.exists():
+            importance_df = load_importance(importance_path)
+            st.plotly_chart(plot_importance_pie(importance_df), use_container_width=True)
+            st.caption(
+                "Relative importance per attribute from the conjoint survey "
+                "(WTP / Part-C is display-only and excluded by design)."
+            )
+        else:
+            st.info(
+                "No `importance.csv` for this category — run the conjoint "
+                "importance step to populate the customer-weighted view."
+            )
+
+    with comp_col2:
+        st.subheader("Neighbors: Technical vs Customer-weighted")
+        nn_tech_path = paths["nn"]
+        nn_weighted_path = paths["nn_weighted"]
+        if nn_tech_path.exists() and nn_weighted_path.exists():
+            nn_technical = load_neighbors_table(nn_tech_path)
+            nn_weighted = load_neighbors_table(nn_weighted_path)
+            side_by_side = build_side_by_side_neighbors(
+                nn_technical, nn_weighted, selected_product, k=5
+            )
+            side_by_side = side_by_side.rename(
+                columns={
+                    "rank": "Rank",
+                    "technical_neighbor": "Technical Neighbor",
+                    "technical_distance": "Technical Dist",
+                    "weighted_neighbor": "Weighted Neighbor",
+                    "weighted_distance": "Weighted Dist",
+                }
+            )
+            st.dataframe(side_by_side, hide_index=True, use_container_width=True)
+            st.caption(
+                "Rank-aligned: how the nearest competitors shift when distance "
+                "is weighted by what customers care about."
+            )
+        else:
+            st.info(
+                "Customer-weighted neighbours unavailable — showing the "
+                "technical view only. Run Module 4's weighted distance to "
+                "enable this comparison."
+            )
 
     # --- Task 2 Visualizations ---
     if dm is not None and pre is not None:
