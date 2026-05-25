@@ -10,7 +10,6 @@
 - Output numeric features: 7
 
 ## Warnings
-- Dropped 1 duplicated header row(s) from Feature_data.
 - gears: ordinal feature has normalization_method=none; using parsed ordinal values.
 
 ## Feature Mapping
