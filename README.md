@@ -81,6 +81,21 @@ and writes everything to `outputs/conjoint_demo/`. See
 `validation/validation_report_conjoint.md` for the technical-vs-weighted
 comparison.
 
+## Results pack (report / slides)
+
+To bundle the headline conjoint results for the report and slide deck, run:
+
+```bash
+python scripts/export_results_pack.py
+```
+
+This writes `outputs/report_pack/` with the relative-importance table (CSV +
+markdown vs the published N=381 reference), a technical-vs-customer-weighted
+top-3 neighbour comparison for every configuration, offline Plotly figures
+(`importance_pie.html`, `neighbor_shift_bar.html`), and a copy of the
+validation report. Open the `.html` figures in a browser; print to PDF for the
+report appendix if needed.
+
 ## Dashboard
 
 The project includes an interactive Streamlit dashboard for exploring the product portfolio and simulating product removal scenarios. It has a **Technical | Customer-weighted** distance toggle, and a multipage **questionnaire** view (`pages/questionnaire.py`) for collecting conjoint ratings.
