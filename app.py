@@ -26,10 +26,12 @@ from dashboard.comparison import (
 st.set_page_config(page_title="Strategic Product Optimizer", layout="wide")
 st.title("Product Portfolio Analysis")
 
-# Sidebar for category selection
+# Sidebar for category selection. "Conjoint Demo" carries real conjoint
+# attributes (weighted by the published N=381 study), so it is the dataset whose
+# Customer-weighted view actually has data — see ./run.sh conjoint.
 category = st.sidebar.selectbox(
     "Select Product Category",
-    ["Smartphones", "Tractors", "User Upload"]
+    ["Smartphones", "Tractors", "User Upload", "Conjoint Demo"]
 )
 
 folder_name = category.lower().replace(" ", "_")

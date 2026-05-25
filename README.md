@@ -38,9 +38,52 @@ The tool generates:
 - distance_summary.txt
 
 
+## Conjoint customer-weighted analysis
+
+Beyond the *technical* (uniform) distance, the tool supports a
+*customer-weighted* distance that re-scales each attribute by its conjoint
+relative importance. The full chain (Modules 2–5):
+
+```bash
+# 1. Generate a questionnaire from a workbook's Feature_data sheet
+python -m conjoint.generate_questionnaire \
+    --excel conjoint_demo.xlsx \
+    --out questionnaire_spec.json \
+    --responses-template responses_template.csv
+
+# 2. Collect ratings → responses.csv
+#    - fill responses_template.csv by hand, OR
+#    - use the Streamlit questionnaire page (pages/questionnaire.py) to enter
+#      1..5 ratings and download a contract-compliant responses.csv.
+
+# 3. Estimate part-worths + importance (OLS → aggregate)
+python -m conjoint.estimate \
+    --responses responses.csv \
+    --out-utilities utilities.csv \
+    --out-importance importance.csv
+
+# 4. Customer-weighted distance (needs importance.csv + attribute_column_map.json)
+python preprocessing.py --excel conjoint_demo.xlsx \
+    --attribute-map attribute_column_map.json
+python compute_distance_matrix.py --excel conjoint_demo.xlsx \
+    --product-col product_id \
+    --mode weighted \
+    --importance importance.csv \
+    --attribute-map attribute_column_map.json
+# → distance_matrix_weighted.csv, nearest_neighbors_weighted.csv
+
+# 5. Explore in the dashboard's Technical | Customer-weighted toggle.
+```
+
+`./run.sh conjoint` automates all of this for a bundled, authentic demo
+(`conjoint_demo.xlsx`, weighted by the **real** published N=381 tractor study)
+and writes everything to `outputs/conjoint_demo/`. See
+`validation/validation_report_conjoint.md` for the technical-vs-weighted
+comparison.
+
 ## Dashboard
 
-The project includes an interactive Streamlit dashboard for exploring the product portfolio and simulating product removal scenarios.
+The project includes an interactive Streamlit dashboard for exploring the product portfolio and simulating product removal scenarios. It has a **Technical | Customer-weighted** distance toggle, and a multipage **questionnaire** view (`pages/questionnaire.py`) for collecting conjoint ratings.
 
 Run the dashboard with:
 
