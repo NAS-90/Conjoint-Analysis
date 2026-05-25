@@ -1,0 +1,30 @@
+{
+  "engine": {
+    "absolute_importance": 78.98976583727034,
+    "relative_importance": 0.114343088077721
+  },
+  "injection": {
+    "absolute_importance": 78.68756678740158,
+    "relative_importance": 0.11390563428595596
+  },
+  "transmission": {
+    "absolute_importance": 125.83052123622048,
+    "relative_importance": 0.1821482849084479
+  },
+  "shuttle": {
+    "absolute_importance": 107.37108709973754,
+    "relative_importance": 0.15542699157430753
+  },
+  "gears": {
+    "absolute_importance": 107.43644729396324,
+    "relative_importance": 0.15552160492536524
+  },
+  "cabin": {
+    "absolute_importance": 79.3157247007874,
+    "relative_importance": 0.11481493582465101
+  },
+  "tank": {
+    "absolute_importance": 113.18253538320211,
+    "relative_importance": 0.1638394604035514
+  }
+}

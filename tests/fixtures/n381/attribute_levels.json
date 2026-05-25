@@ -1,0 +1,100 @@
+{
+  "engine": [
+    {
+      "code": "basic",
+      "label": "basic engine"
+    },
+    {
+      "code": "premium",
+      "label": "premium engine"
+    }
+  ],
+  "injection": [
+    {
+      "code": "mechanical",
+      "label": "mechanical"
+    },
+    {
+      "code": "electrical",
+      "label": "electrical"
+    }
+  ],
+  "transmission": [
+    {
+      "code": "not_synchronized",
+      "label": "not synchronized"
+    },
+    {
+      "code": "synchronized",
+      "label": "synchronized"
+    },
+    {
+      "code": "powershift",
+      "label": "powershift"
+    },
+    {
+      "code": "cvt",
+      "label": "CVT"
+    }
+  ],
+  "shuttle": [
+    {
+      "code": "no_shuttle",
+      "label": "no shuttle"
+    },
+    {
+      "code": "mechanical_shuttle",
+      "label": "mechanical shuttle"
+    },
+    {
+      "code": "hydraulic_shuttle",
+      "label": "hydraulic shuttle"
+    }
+  ],
+  "gears": [
+    {
+      "code": "g8_9",
+      "label": "8-9"
+    },
+    {
+      "code": "g12",
+      "label": "12"
+    },
+    {
+      "code": "g16_18",
+      "label": "16-18"
+    },
+    {
+      "code": "g24_32",
+      "label": "24-32"
+    }
+  ],
+  "cabin": [
+    {
+      "code": "basic",
+      "label": "basic quality"
+    },
+    {
+      "code": "high",
+      "label": "high quality"
+    },
+    {
+      "code": "premium",
+      "label": "premium quality"
+    }
+  ],
+  "tank": [
+    {
+      "code": "h8",
+      "label": "capacity for 8 hours of work"
+    },
+    {
+      "code": "h10",
+      "label": "capacity for 10 hours of work"
+    },
+    {
+      "code": "h12",
+      "label": "capacity for 12 hours of work"
+    }
+  ]
+}

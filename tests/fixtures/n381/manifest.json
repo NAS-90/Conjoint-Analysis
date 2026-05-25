@@ -1,0 +1,20 @@
+{
+  "source": "../Nicolas_files/20191110_Conjoint_Evaluation_v2.xlsx",
+  "n_respondents": 381,
+  "attributes": [
+    "engine",
+    "injection",
+    "transmission",
+    "shuttle",
+    "gears",
+    "cabin",
+    "tank"
+  ],
+  "files": [
+    "per_respondent_utilities.csv",
+    "importance_reference.json",
+    "population_utilities_reference.json",
+    "attribute_levels.json"
+  ],
+  "note": "raw_data holds post-OLS per-respondent utilities; these fixtures exercise algorithm_spec.md \u00a74 aggregation, not the \u00a73 OLS step."
+}
