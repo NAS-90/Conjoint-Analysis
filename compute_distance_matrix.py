@@ -1,8 +1,42 @@
+"""Module 4 — distance matrix (technical + customer-weighted).
+
+This module turns the preprocessed feature matrix (``preprocessed_output.csv``)
+into a product-by-product distance matrix and a nearest-neighbour table.
+
+Two modes are supported:
+
+* ``technical``  — z-score every feature column (``StandardScaler``) then plain
+  Euclidean distance.  This is the historical behaviour and is preserved
+  byte-for-byte by the refactor.
+* ``weighted``   — additionally re-scale every z-scored column ``j`` belonging to
+  conjoint attribute ``a`` by ``√(RI_a / m_a)`` before computing the Euclidean
+  distance, where ``RI_a`` is the relative importance of attribute ``a`` and
+  ``m_a`` the number of preprocessed columns that attribute expands into
+  (``algorithm_spec.md`` §6).
+
+Weighted-Euclidean convention
+-----------------------------
+Per ``algorithm_spec.md`` §6, each scaled value in column ``j`` is multiplied by
+``√(RI_a / m_a)``.  The squared per-column contribution to the distance is
+therefore ``(RI_a / m_a) · Δ_j²``.  We expose this as a per-column **weight
+vector** ``w_j = RI_a / m_a`` and define::
+
+    weighted_distance_matrix(X, w) = √( Σ_j w_j · (x_ij − x_kj)² )
+
+which is exactly the spec's ``d_w(A, B) = √( Σ_j w_j (a_j − b_j)² )`` (line 87).
+The per-column multiplier applied to the scaled value is ``√w_j``.
+
+Importing this module has NO side effects; all CLI handling lives in
+:func:`main` / :func:`parse_args`.
+"""
+
 from __future__ import annotations
 
 import argparse
 import os
 import re
+from typing import Mapping, Sequence
+
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
@@ -22,10 +56,27 @@ OUTPUT_DISTANCE_CSV = "distance_matrix.csv"
 OUTPUT_NEIGHBORS_CSV = "nearest_neighbors.csv"
 OUTPUT_SUMMARY_TXT = "distance_summary.txt"
 
+# Weighted-mode outputs (kept separate so technical files are never clobbered).
+OUTPUT_DISTANCE_CSV_WEIGHTED = "distance_matrix_weighted.csv"
+OUTPUT_NEIGHBORS_CSV_WEIGHTED = "nearest_neighbors_weighted.csv"
+
 TOP_K_NEIGHBORS = 5
 FLOAT_DTYPE = "float64"
 
 SCALE_ALL_FEATURES = True
+
+# Fallback weight for columns that are NOT covered by the attribute map (e.g.
+# ``price`` with conjoint_role=skip, or any metric column the conjoint never
+# rated). This is the per-column weight ``w_j`` (entering as ``√w_j`` on the
+# scaled value), so the default of 0.0 means "carry no conjoint signal":
+# unmapped columns drop out of the *customer-weighted* distance entirely. That
+# matches the dashboard's intent — the weighted view answers "how different are
+# these products on the dimensions customers said they care about" — while the
+# technical view still uses every column. Override with ``--unmapped-weight``;
+# e.g. pass the mean of the conjoint per-column weights to keep unmapped columns
+# at "average" influence. For the tractor reference case every distance column
+# is a conjoint attribute, so the fallback is never exercised there.
+DEFAULT_UNMAPPED_WEIGHT = 0.0
 
 _TRUE_SET = {"true", "1", "yes", "y", "available"}
 _FALSE_SET = {"false", "0", "no", "n", "not available", "nan", ""}
@@ -43,7 +94,7 @@ def _clean_bool_like_to_int(x):
 
     s = str(x).strip().lower()
 
-    s = re.sub(r"^[\u2022\u00b7\*\-\+]+\s*", "", s)
+    s = re.sub(r"^[•·\*\-\+]+\s*", "", s)
 
     if s in _TRUE_SET:
         return 1
@@ -85,6 +136,16 @@ def coerce_dataframe_to_numeric(df: pd.DataFrame) -> pd.DataFrame:
     return df2
 
 
+def scale_matrix(X: np.ndarray) -> np.ndarray:
+    """Z-score every column (mean 0, unit variance) via ``StandardScaler``.
+
+    This is the exact transform used by the original technical pipeline; it is
+    factored out so both modes share one implementation.
+    """
+    scaler = StandardScaler(with_mean=True, with_std=True)
+    return scaler.fit_transform(np.asarray(X, dtype=FLOAT_DTYPE))
+
+
 def compute_euclidean_distance_matrix(X: np.ndarray) -> np.ndarray:
     # D^2 = ||x_i||^2 + ||x_j||^2 - 2 x_i·x_j
     sq = np.sum(X * X, axis=1, keepdims=True)
@@ -93,6 +154,117 @@ def compute_euclidean_distance_matrix(X: np.ndarray) -> np.ndarray:
     D = np.sqrt(D2)
     np.fill_diagonal(D, 0.0)
     return D
+
+
+def build_weight_vector(
+    columns: Sequence[str],
+    importance: pd.DataFrame,
+    attribute_map: Mapping[str, Mapping[str, object]],
+    *,
+    default_weight: float = DEFAULT_UNMAPPED_WEIGHT,
+) -> np.ndarray:
+    """Build the per-column weight vector ``w_j`` for the weighted distance.
+
+    For a preprocessed column ``j`` belonging to attribute ``a`` (per the
+    attribute map's ``columns`` lists) the weight is ``w_j = RI_a / m_a`` where
+    ``RI_a`` is the relative importance of ``a`` and ``m_a`` its column count.
+    Columns not covered by the map receive ``default_weight``.
+
+    The returned vector is meant to be consumed by
+    :func:`weighted_distance_matrix`, i.e. each scaled value is multiplied by
+    ``√w_j`` and the squared contribution is ``w_j · Δ_j²``.
+
+    Parameters
+    ----------
+    columns:
+        Preprocessed feature columns, in matrix order.
+    importance:
+        ``importance.csv`` frame with ``attribute`` and ``relative_importance``
+        columns (see :data:`conjoint.io.IMPORTANCE_COLUMNS`).
+    attribute_map:
+        ``attribute_column_map.json`` mapping attribute -> ``{"columns": [...],
+        "m_a": int, ...}``.
+    default_weight:
+        Weight assigned to columns absent from the map. Must be non-negative.
+    """
+    if default_weight < 0:
+        raise ValueError(f"default_weight must be non-negative, got {default_weight}")
+
+    ri_by_attribute = _relative_importance_lookup(importance)
+
+    # Map every mapped preprocessed column -> its per-column weight RI_a / m_a.
+    weight_by_column: dict[str, float] = {}
+    for attribute, entry in attribute_map.items():
+        attr_columns = entry.get("columns", []) if isinstance(entry, Mapping) else []
+        m_a = _attribute_column_count(attribute, entry, attr_columns)
+        if attribute not in ri_by_attribute:
+            raise ValueError(
+                f"attribute '{attribute}' from the attribute map is missing from "
+                f"importance.csv (have: {sorted(ri_by_attribute)})"
+            )
+        per_column_weight = float(ri_by_attribute[attribute]) / m_a
+        for col in attr_columns:
+            weight_by_column[str(col)] = per_column_weight
+
+    weights = np.array(
+        [weight_by_column.get(str(col), float(default_weight)) for col in columns],
+        dtype=FLOAT_DTYPE,
+    )
+    return weights
+
+
+def _relative_importance_lookup(importance: pd.DataFrame) -> dict[str, float]:
+    """Extract ``{attribute: relative_importance}`` from an importance frame."""
+    required = {"attribute", "relative_importance"}
+    missing = required - set(importance.columns)
+    if missing:
+        raise ValueError(
+            f"importance frame is missing required column(s): {sorted(missing)}"
+        )
+    return {
+        str(attr): float(ri)
+        for attr, ri in zip(
+            importance["attribute"], importance["relative_importance"]
+        )
+    }
+
+
+def _attribute_column_count(
+    attribute: str, entry: Mapping[str, object], attr_columns: Sequence[object]
+) -> int:
+    """Resolve ``m_a`` for an attribute, validating it against its columns."""
+    m_a = entry.get("m_a", len(attr_columns)) if isinstance(entry, Mapping) else 0
+    m_a = int(m_a)
+    if m_a <= 0 or len(attr_columns) == 0:
+        raise ValueError(
+            f"attribute '{attribute}' has no preprocessed columns (m_a={m_a})"
+        )
+    if m_a != len(attr_columns):
+        raise ValueError(
+            f"attribute '{attribute}' m_a={m_a} disagrees with its column count "
+            f"{len(attr_columns)}"
+        )
+    return m_a
+
+
+def weighted_distance_matrix(X_scaled: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """Weighted Euclidean distance ``√( Σ_j w_j (x_ij − x_kj)² )``.
+
+    Each already-scaled column ``j`` is multiplied by ``√w_j`` and a plain
+    Euclidean distance is taken, so the squared per-column contribution is
+    ``w_j · Δ_j²`` — the convention from ``algorithm_spec.md`` §6.
+    """
+    X_scaled = np.asarray(X_scaled, dtype=FLOAT_DTYPE)
+    weights = np.asarray(weights, dtype=FLOAT_DTYPE)
+    if weights.ndim != 1 or weights.shape[0] != X_scaled.shape[1]:
+        raise ValueError(
+            f"weights length {weights.shape} must match feature count "
+            f"{X_scaled.shape[1]}"
+        )
+    if np.any(weights < 0):
+        raise ValueError("weights must be non-negative")
+    X_weighted = X_scaled * np.sqrt(weights)
+    return compute_euclidean_distance_matrix(X_weighted)
 
 
 def make_unique_names(names: list[str]) -> list[str]:
@@ -203,62 +375,142 @@ def write_distance_summary(dist_df: pd.DataFrame, neighbors_df: pd.DataFrame, pa
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--excel", type=str, default=FILE_PATH)
-parser.add_argument(
-    "--product-col",
-    dest="product_col",
-    type=str,
-    default=None,
-    help="Column in the Edited sheet to use as the product/row label. "
-         f"Defaults to auto-detecting one of {PRODUCT_COL_CANDIDATES}.",
-)
-args, _ = parser.parse_known_args()
 
-FILE_PATH = args.excel
-PRODUCT_COL = args.product_col
+# =========================
+#            CLI
+# =========================
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse CLI arguments. Pure: no I/O, no global mutation."""
+    parser = argparse.ArgumentParser(
+        description="Compute a technical or customer-weighted product distance matrix.",
+    )
+    parser.add_argument("--excel", type=str, default=FILE_PATH)
+    parser.add_argument(
+        "--product-col",
+        dest="product_col",
+        type=str,
+        default=None,
+        help="Column in the Edited sheet to use as the product/row label. "
+        f"Defaults to auto-detecting one of {PRODUCT_COL_CANDIDATES}.",
+    )
+    parser.add_argument(
+        "--input-csv",
+        dest="input_csv",
+        type=str,
+        default=INPUT_CSV,
+        help=f"Preprocessed feature matrix CSV (default: {INPUT_CSV}).",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("technical", "weighted"),
+        default="technical",
+        help="technical: z-score + Euclidean (default). weighted: additionally "
+        "scale each column by sqrt(RI_a / m_a) before Euclidean.",
+    )
+    parser.add_argument(
+        "--importance",
+        type=str,
+        default=None,
+        help="importance.csv (attribute, absolute_importance, relative_importance). "
+        "Required in weighted mode.",
+    )
+    parser.add_argument(
+        "--attribute-map",
+        dest="attribute_map",
+        type=str,
+        default=None,
+        help="attribute_column_map.json mapping attributes to preprocessed "
+        "columns. Required in weighted mode.",
+    )
+    parser.add_argument(
+        "--unmapped-weight",
+        dest="unmapped_weight",
+        type=float,
+        default=DEFAULT_UNMAPPED_WEIGHT,
+        help="Per-column weight w_j for columns absent from the attribute map "
+        f"(weighted mode only; default: {DEFAULT_UNMAPPED_WEIGHT}, i.e. unmapped "
+        "columns are excluded from the customer-weighted distance).",
+    )
+    return parser.parse_args(argv)
+
+
+def _prepare_scaled_matrix(input_csv: str) -> tuple[np.ndarray, list[str], int]:
+    """Load the preprocessed CSV, coerce to numeric and z-score it."""
+    df_raw = pd.read_csv(input_csv)
+    n_rows = len(df_raw)
+    feature_columns = list(df_raw.columns)
+
+    X_df = coerce_dataframe_to_numeric(df_raw).astype(FLOAT_DTYPE)
+    X_values = X_df.to_numpy(dtype=FLOAT_DTYPE, copy=True)
+
+    if SCALE_ALL_FEATURES:
+        X_scaled = scale_matrix(X_values)
+    else:
+        X_scaled = X_values
+    return X_scaled, feature_columns, n_rows
+
 
 # =========================
 #            MAIN
 # =========================
-def main():
-    if not os.path.exists(INPUT_CSV):
-        raise FileNotFoundError(f"Missing {INPUT_CSV}")
-    if not os.path.exists(FILE_PATH):
-        raise FileNotFoundError(f"Missing {FILE_PATH}")
+def main(argv: Sequence[str] | None = None) -> None:
+    args = parse_args(argv)
+    excel_path = args.excel
+    input_csv = args.input_csv
 
-    df_raw = pd.read_csv(INPUT_CSV)
-    n_rows = len(df_raw)
+    if not os.path.exists(input_csv):
+        raise FileNotFoundError(f"Missing {input_csv}")
+    if not os.path.exists(excel_path):
+        raise FileNotFoundError(f"Missing {excel_path}")
 
-    product_col = resolve_product_col(FILE_PATH, DATA_SHEET, PRODUCT_COL)
-    product_names = load_product_names(FILE_PATH, DATA_SHEET, product_col, n_rows)
+    X_scaled, feature_columns, n_rows = _prepare_scaled_matrix(input_csv)
 
-    X_df = coerce_dataframe_to_numeric(df_raw).astype(FLOAT_DTYPE)
+    product_col = resolve_product_col(excel_path, DATA_SHEET, args.product_col)
+    product_names = load_product_names(excel_path, DATA_SHEET, product_col, n_rows)
 
-    if SCALE_ALL_FEATURES:
-        scaler = StandardScaler(with_mean=True, with_std=True)
-        X = scaler.fit_transform(X_df.to_numpy(dtype=FLOAT_DTYPE, copy=True))
+    if args.mode == "weighted":
+        if args.importance is None or args.attribute_map is None:
+            raise ValueError(
+                "weighted mode requires --importance and --attribute-map."
+            )
+        # Imported lazily so importing this module stays dependency-light.
+        from conjoint.io import read_attribute_map, read_importance
+
+        importance = read_importance(args.importance)
+        attribute_map = read_attribute_map(args.attribute_map)
+        weights = build_weight_vector(
+            feature_columns,
+            importance,
+            attribute_map,
+            default_weight=args.unmapped_weight,
+        )
+        D = weighted_distance_matrix(X_scaled, weights)
+        distance_csv = OUTPUT_DISTANCE_CSV_WEIGHTED
+        neighbors_csv = OUTPUT_NEIGHBORS_CSV_WEIGHTED
     else:
-        X = X_df.to_numpy(dtype=FLOAT_DTYPE, copy=True)
+        D = compute_euclidean_distance_matrix(X_scaled)
+        distance_csv = OUTPUT_DISTANCE_CSV
+        neighbors_csv = OUTPUT_NEIGHBORS_CSV
 
-    D = compute_euclidean_distance_matrix(X)
     sanity_checks(D)
 
     dist_df = pd.DataFrame(D, index=product_names, columns=product_names)
-    dist_df.to_csv(OUTPUT_DISTANCE_CSV, index=True)
+    dist_df.to_csv(distance_csv, index=True)
 
     neighbors_df = build_neighbors_table(dist_df, TOP_K_NEIGHBORS)
-    neighbors_df.to_csv(OUTPUT_NEIGHBORS_CSV, index=False)
+    neighbors_df.to_csv(neighbors_csv, index=False)
 
-    write_distance_summary(dist_df, neighbors_df, OUTPUT_SUMMARY_TXT)
+    if args.mode == "technical":
+        write_distance_summary(dist_df, neighbors_df, OUTPUT_SUMMARY_TXT)
 
-    print("Task 3 Complete.")
-    print(f"Input: {INPUT_CSV} (n={X.shape[0]}, d={X.shape[1]})")
+    print(f"Task 3 Complete. (mode={args.mode})")
+    print(f"Input: {input_csv} (n={X_scaled.shape[0]}, d={X_scaled.shape[1]})")
     print(f"Product label column: {product_col}")
     print(f"SCALE_ALL_FEATURES: {SCALE_ALL_FEATURES}")
-    print(f"Distance matrix: {OUTPUT_DISTANCE_CSV} (shape={dist_df.shape})")
-    print(f"Nearest neighbors: {OUTPUT_NEIGHBORS_CSV} (top_k={TOP_K_NEIGHBORS})")
-    print(f"Summary report: {OUTPUT_SUMMARY_TXT}")
+    print(f"Distance matrix: {distance_csv} (shape={dist_df.shape})")
+    print(f"Nearest neighbors: {neighbors_csv} (top_k={TOP_K_NEIGHBORS})")
+    if args.mode == "technical":
+        print(f"Summary report: {OUTPUT_SUMMARY_TXT}")
 
 
 if __name__ == "__main__":
