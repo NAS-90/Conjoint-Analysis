@@ -22,6 +22,8 @@ from dashboard.comparison import (
     plot_importance_pie,
     resolve_view,
 )
+from conjoint.io import ATTRIBUTE_COL, RELATIVE_IMPORTANCE_COL
+from validation.validate_conjoint import NEIGHBOR_K, count_differing
 
 st.set_page_config(page_title="Strategic Product Optimizer", layout="wide")
 st.title("Product Portfolio Analysis")
@@ -72,6 +74,68 @@ if os.path.exists(summary_path):
     with open(summary_path, 'r') as f:
         summary_text = f.read()
     st.sidebar.info(f"**Category Summary:**\n\n{summary_text}")
+
+# --- SIDEBAR: results summary + one-click report-pack export (Module 5) ---
+# Only meaningful for a conjoint-capable dataset (has importance + a weighted
+# neighbours table); for the technical-only datasets we say so and move on.
+_imp_path = paths["importance"]
+_nn_tech_path = paths["nn"]
+_nn_wt_path = paths["nn_weighted"]
+_conjoint_ready = _imp_path.exists() and _nn_tech_path.exists() and _nn_wt_path.exists()
+
+with st.sidebar.expander("📊 Results summary", expanded=False):
+    if _imp_path.exists():
+        _imp_df = load_importance(_imp_path)
+        st.caption("Relative importance per attribute")
+        st.dataframe(
+            _imp_df[[ATTRIBUTE_COL, RELATIVE_IMPORTANCE_COL]].rename(
+                columns={
+                    ATTRIBUTE_COL: "attribute",
+                    RELATIVE_IMPORTANCE_COL: "rel. importance",
+                }
+            ),
+            hide_index=True,
+            use_container_width=True,
+        )
+        if _conjoint_ready:
+            _tech_nn = load_neighbors_table(_nn_tech_path)
+            _wt_nn = load_neighbors_table(_nn_wt_path)
+            _prods = sorted(_tech_nn["product"].unique())
+            _n_diff = count_differing(_tech_nn, _wt_nn, _prods, NEIGHBOR_K)
+            st.metric(
+                f"Configs reordered (top-{NEIGHBOR_K})",
+                f"{_n_diff} / {len(_prods)}",
+                help="How many products get a different nearest-neighbour ordering "
+                "once distance is weighted by customer importance.",
+            )
+        else:
+            st.caption("Customer-weighted neighbours not available for this dataset.")
+    else:
+        st.caption("No conjoint importance for this category yet.")
+
+    if _conjoint_ready and st.button(
+        "Export report pack",
+        help="Write outputs/report_pack/ (RI table, neighbour comparison, figures) "
+        "for the report and slides.",
+    ):
+        try:
+            from scripts.export_results_pack import (
+                DEFAULT_OUT_DIR,
+                DEFAULT_REFERENCE,
+                DEFAULT_VALIDATION_REPORT,
+                export_pack,
+            )
+
+            _out = export_pack(
+                paths["base"], DEFAULT_REFERENCE, DEFAULT_VALIDATION_REPORT, DEFAULT_OUT_DIR
+            )
+            _files = sorted(
+                str(p.relative_to(_out)) for p in _out.rglob("*") if p.is_file()
+            )
+            st.success(f"Wrote {len(_files)} files to `{_out}`")
+            st.code("\n".join(_files))
+        except Exception as exc:  # never crash the dashboard over an export
+            st.error(f"Could not export report pack: {exc}")
 
 # --- PRE-LOAD NUMERIC DATA (needed for feature comparison + PCA) ---
 # NOTE: PCA / raw scatter always read the *technical* preprocessed feature
