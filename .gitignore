@@ -224,3 +224,6 @@ __marimo__/
 # Office lock / temp files
 ~$*
 *.tmp
+
+# Local Claude Code agent state / worktrees
+.claude/
