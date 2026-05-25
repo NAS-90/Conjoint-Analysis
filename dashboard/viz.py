@@ -34,12 +34,29 @@ def dataset_paths(outputs_dir: str | Path, dataset: str) -> dict[str, Path]:
     }
 
 
+def _numeric_view(df: pd.DataFrame) -> pd.DataFrame:
+    """Numeric columns of ``df``, with one-hot ``bool`` columns cast to ``int8``.
+
+    The universal preprocessor encodes nominal/text features as one-hot ``bool``
+    columns (``pandas.get_dummies``). Those are perfectly valid numeric features
+    for PCA / distance, so we include them here — otherwise an all-categorical
+    dataset (e.g. the conjoint demo) would look like it has *no* numeric columns.
+    """
+    num = df.select_dtypes(include=[np.number]).copy()
+    bool_cols = df.select_dtypes(include=["bool"])
+    for col in bool_cols.columns:
+        num[col] = bool_cols[col].astype("int8")
+    # Preserve original column order.
+    ordered = [c for c in df.columns if c in num.columns]
+    return num[ordered]
+
+
 def load_preprocessed_numeric(
     path: str | Path,
     selected_features: list[str] | None = None,
 ) -> pd.DataFrame:
     df = pd.read_csv(path)
-    num = df.select_dtypes(include=[np.number]).copy()
+    num = _numeric_view(df)
 
     if num.shape[1] == 0:
         raise ValueError(f"No numeric columns found in {path}. PCA requires numeric features.")
@@ -68,7 +85,7 @@ def load_preprocessed_numeric(
 
 def get_available_numeric_features(path: str | Path) -> list[str]:
     df = pd.read_csv(path)
-    num = df.select_dtypes(include=[np.number])
+    num = _numeric_view(df)
     return [str(c).strip() for c in num.columns]
 
 

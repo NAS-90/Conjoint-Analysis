@@ -401,3 +401,45 @@ def test_weight_importance_to_relative_accepts_aliases() -> None:
 def test_weight_importance_to_relative_rejects_unknown_label() -> None:
     with pytest.raises(ValueError):
         comparison.weight_importance_to_relative({"a": "super-high"})
+
+
+# ---------------------------------------------------------------------------
+# load_preprocessed_numeric — one-hot (bool) columns must count as numeric
+# ---------------------------------------------------------------------------
+@pytest.mark.unit
+def test_load_preprocessed_numeric_includes_onehot_bool_columns(tmp_path: Path) -> None:
+    """An all-categorical (one-hot/bool) matrix must still expose numeric features.
+
+    Regression for the conjoint demo: its preprocessed_output.csv is entirely
+    one-hot bool columns, which used to read back as bool and be dropped.
+    """
+    path = tmp_path / "preprocessed_output.csv"
+    pd.DataFrame(
+        {
+            "engine_basic": [True, False, True],
+            "engine_premium": [False, True, False],
+            "tank_h8": [True, True, False],
+        }
+    ).to_csv(path, index=False)
+
+    num = viz.load_preprocessed_numeric(path)
+    assert num.shape == (3, 3)
+    # Cast to a numeric dtype (int8), not object/bool.
+    assert all(str(dt) != "bool" for dt in num.dtypes)
+    assert viz.get_available_numeric_features(path) == [
+        "engine_basic",
+        "engine_premium",
+        "tank_h8",
+    ]
+
+
+@pytest.mark.unit
+def test_load_preprocessed_numeric_mixes_bool_and_float(tmp_path: Path) -> None:
+    path = tmp_path / "preprocessed_output.csv"
+    pd.DataFrame(
+        {"price": [1.0, 2.0, 3.0], "has_cabin": [True, False, True]}
+    ).to_csv(path, index=False)
+
+    num = viz.load_preprocessed_numeric(path)
+    assert list(num.columns) == ["price", "has_cabin"]
+    assert num.shape == (3, 2)

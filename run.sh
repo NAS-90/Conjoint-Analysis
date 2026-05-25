@@ -4,7 +4,8 @@
 # Usage:
 #   ./run.sh                # create venv, install deps, regenerate outputs, launch dashboard
 #   ./run.sh setup          # only create venv + install deps
-#   ./run.sh preprocess     # only regenerate the three datasets' outputs/
+#   ./run.sh preprocess     # regenerate the datasets' outputs/ (incl. attribute maps)
+#   ./run.sh conjoint       # build the conjoint demo + customer-weighted distances
 #   ./run.sh app            # only launch streamlit (assumes venv + outputs/ exist)
 #
 # Tested on macOS and Linux. On Windows, use WSL or run the equivalent
@@ -49,7 +50,8 @@ preprocess() {
     step "Tractors → outputs/tractors/"
     python preprocessing.py \
         --excel "Database_Distance Analysis.xlsx" \
-        --validation-report validation/preprocess_tractors.md
+        --validation-report validation/preprocess_tractors.md \
+        --attribute-map outputs/tractors/attribute_column_map.json
     python compute_distance_matrix.py
     mv -f preprocessed_output.csv distance_matrix.csv nearest_neighbors.csv distance_summary.txt outputs/tractors/
     ok "tractors regenerated"
@@ -57,7 +59,8 @@ preprocess() {
     step "Smartphones → outputs/smartphones/"
     python preprocessing.py \
         --excel "smart phone dataset.xlsx" \
-        --validation-report validation/preprocess_smartphones.md
+        --validation-report validation/preprocess_smartphones.md \
+        --attribute-map outputs/smartphones/attribute_column_map.json
     python compute_distance_matrix.py --excel "smart phone dataset.xlsx" --product-col model
     mv -f preprocessed_output.csv distance_matrix.csv nearest_neighbors.csv distance_summary.txt outputs/smartphones/
     ok "smartphones regenerated"
@@ -66,13 +69,107 @@ preprocess() {
         step "User-upload sample → outputs/user_upload/"
         python preprocessing.py \
             --excel templates/custom_product_template.xlsx \
-            --validation-report validation/preprocess_user_upload.md
+            --validation-report validation/preprocess_user_upload.md \
+            --attribute-map outputs/user_upload/attribute_column_map.json
         python compute_distance_matrix.py --excel templates/custom_product_template.xlsx --product-col product
         mv -f preprocessed_output.csv distance_matrix.csv nearest_neighbors.csv distance_summary.txt outputs/user_upload/
         ok "user-upload sample regenerated"
     else
         warn "templates/custom_product_template.xlsx missing — skipping user_upload"
     fi
+}
+
+# Is an attribute_column_map.json present and non-empty (i.e. "{}" plus a few
+# braces is treated as empty)? Used to decide whether a dataset carries conjoint
+# attributes that the customer-weighted distance can consume.
+attribute_map_nonempty() {
+    local map="$1"
+    [ -f "$map" ] || return 1
+    python - "$map" <<'PY'
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+sys.exit(0 if isinstance(data, dict) and len(data) > 0 else 1)
+PY
+}
+
+# Compute the customer-weighted distance for one already-preprocessed dataset.
+#   $1 dataset folder under outputs/   $2 workbook   $3 product-col
+weighted_for_dataset() {
+    local ds="$1" excel="$2" product_col="$3"
+    local out="outputs/$ds"
+    local pre="$out/preprocessed_output.csv"
+    local map="$out/attribute_column_map.json"
+    local imp="$out/importance.csv"
+    local resp="$out/responses.csv"
+
+    if [ ! -f "$pre" ] || ! attribute_map_nonempty "$map"; then
+        warn "$ds: no preprocessed matrix or empty attribute map — skipping weighted distance"
+        return 0
+    fi
+
+    # If a survey exists but importance has not been estimated yet, estimate it.
+    if [ ! -f "$imp" ] && [ -f "$resp" ]; then
+        step "$ds: estimating importance from responses.csv"
+        python -m conjoint.estimate --responses "$resp" --out-importance "$imp"
+    fi
+
+    if [ ! -f "$imp" ]; then
+        warn "$ds: no importance.csv (and no responses.csv) — skipping weighted distance"
+        return 0
+    fi
+
+    step "$ds: customer-weighted distance → $out/"
+    python compute_distance_matrix.py \
+        --excel "$excel" --product-col "$product_col" \
+        --input-csv "$pre" \
+        --mode weighted --importance "$imp" --attribute-map "$map"
+    mv -f distance_matrix_weighted.csv nearest_neighbors_weighted.csv "$out/"
+    ok "$ds weighted distance regenerated"
+}
+
+conjoint() {
+    # shellcheck disable=SC1091
+    source "$VENV/bin/activate"
+
+    mkdir -p outputs/conjoint_demo
+
+    step "Building conjoint demo workbook (conjoint_demo.xlsx)"
+    python scripts/build_demo_workbook.py --out conjoint_demo.xlsx
+    ok "demo workbook built"
+
+    step "Conjoint demo → outputs/conjoint_demo/"
+    python preprocessing.py \
+        --excel conjoint_demo.xlsx \
+        --output outputs/conjoint_demo/preprocessed_output.csv \
+        --attribute-map outputs/conjoint_demo/attribute_column_map.json \
+        --validation-report validation/preprocess_conjoint_demo.md
+    # Customer importance is the *real* published N=381 study, not fabricated.
+    python scripts/build_demo_importance.py --out outputs/conjoint_demo/importance.csv
+    # Technical (unweighted) distance for the same configs.
+    python compute_distance_matrix.py \
+        --excel conjoint_demo.xlsx --product-col product_id \
+        --input-csv outputs/conjoint_demo/preprocessed_output.csv
+    mv -f distance_matrix.csv nearest_neighbors.csv distance_summary.txt outputs/conjoint_demo/
+    weighted_for_dataset conjoint_demo conjoint_demo.xlsx product_id
+    ok "conjoint demo regenerated"
+
+    # Opportunistically add a customer-weighted view to any existing dataset that
+    # already carries conjoint attributes (non-empty attribute map) and an
+    # importance.csv (or a responses.csv we can estimate from).
+    weighted_for_dataset tractors "Database_Distance Analysis.xlsx" model
+    weighted_for_dataset smartphones "smart phone dataset.xlsx" model
+    if [ -f templates/custom_product_template.xlsx ]; then
+        weighted_for_dataset user_upload templates/custom_product_template.xlsx product
+    fi
+
+    step "Conjoint validation report"
+    python validation/validate_conjoint.py \
+        --dataset-dir outputs/conjoint_demo \
+        --out validation/validation_report_conjoint.md
+    ok "validation/validation_report_conjoint.md regenerated"
 }
 
 app() {
@@ -85,7 +182,8 @@ app() {
 case "${1:-all}" in
     setup)      setup ;;
     preprocess) preprocess ;;
+    conjoint)   conjoint ;;
     app)        app ;;
-    all)        setup; preprocess; app ;;
-    *)          echo "Usage: $0 [setup|preprocess|app|all]"; exit 2 ;;
+    all)        setup; preprocess; conjoint; app ;;
+    *)          echo "Usage: $0 [setup|preprocess|conjoint|app|all]"; exit 2 ;;
 esac
