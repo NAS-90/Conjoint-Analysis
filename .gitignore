@@ -201,6 +201,10 @@ cython_debug/
 outputs/
 preprocessed_output*.csv
 preprocessed_output*.xlsx
+attribute_column_map*.json
+responses*.csv
+utilities*.csv
+importance*.csv
 
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
