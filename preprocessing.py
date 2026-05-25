@@ -9,6 +9,8 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
+from conjoint.io import write_attribute_map
+
 
 DEFAULT_EXCEL = "Database_Distance Analysis.xlsx"
 DATA_SHEET = "Edited"
@@ -77,11 +79,107 @@ COLUMN_ALIASES = {
 REQUIRED_META_COLUMNS = {"feature_name", "data_types", "included_in_analysis"}
 PREPROCESS_META_COLUMNS = [
     "feature_name",
+    "description",
     "data_types",
     "included_in_analysis",
     "normalization_method",
     "ideal_direction",
+    "weight_importance",
+    "unit",
+    "value_min",
+    "value_max",
+    "conjoint_role",
+    "conjoint_levels",
+    "conjoint_level_codes",
+    "conjoint_question_type",
+    "conjoint_section",
+    "notes",
 ]
+
+OPTIONAL_META_DEFAULTS = {
+    "description": "",
+    "normalization_method": "none",
+    "ideal_direction": "neutral",
+    "weight_importance": "none",
+    "unit": "",
+    "value_min": "",
+    "value_max": "",
+    "conjoint_role": "skip",
+    "conjoint_levels": "",
+    "conjoint_level_codes": "",
+    "conjoint_question_type": "",
+    "conjoint_section": "",
+    "notes": "",
+}
+
+WEIGHT_ALIASES = {
+    "": "none",
+    "nan": "none",
+    "n/a": "none",
+    "medium high": "medium-high",
+    "medium_high": "medium-high",
+    "med high": "medium-high",
+    "low medium": "low-medium",
+    "low_medium": "low-medium",
+}
+
+CONJOINT_ROLE_ALIASES = {
+    "": "skip",
+    "nan": "skip",
+    "none": "skip",
+    "id": "identifier",
+    "product": "identifier",
+}
+
+CONJOINT_QUESTION_ALIASES = {
+    "": "",
+    "nan": "",
+    "none": "",
+    "b1": "rating",
+    "b1_rating": "rating",
+    "b2": "pairwise",
+    "b2_importance": "pairwise",
+    "b3": "pairwise",
+    "b3_pairwise": "pairwise",
+    "b4": "calibration",
+    "b4_calibration": "calibration",
+    "c": "wtp",
+    "c_wtp": "wtp",
+}
+
+CONJOINT_SECTION_ALIASES = {
+    "": "",
+    "nan": "",
+    "none": "",
+    "b1": "B1_rating",
+    "b1_rating": "B1_rating",
+    "b2": "B2_importance",
+    "b2_importance": "B2_importance",
+    "b3": "B3_pairwise",
+    "b3_pairwise": "B3_pairwise",
+    "b4": "B4_calibration",
+    "b4_calibration": "B4_calibration",
+    "c": "C_wtp",
+    "c_wtp": "C_wtp",
+    "a": "A_general",
+    "a_general": "A_general",
+}
+
+ALLOWED_TYPES = {"metric", "ordinal", "binary", "nominal", "text"}
+ALLOWED_NORMS = {"z-score", "min-max", "ordinal-mapping", "none"}
+ALLOWED_IDEALS = {"higher", "lower", "neutral"}
+ALLOWED_WEIGHTS = {"high", "medium-high", "medium", "low-medium", "low", "none"}
+ALLOWED_CONJOINT_ROLES = {"attribute", "identifier", "derived", "skip"}
+ALLOWED_CONJOINT_QUESTIONS = {"", "rating", "pairwise", "calibration", "wtp"}
+ALLOWED_CONJOINT_SECTIONS = {
+    "",
+    "A_general",
+    "B1_rating",
+    "B2_importance",
+    "B3_pairwise",
+    "B4_calibration",
+    "C_wtp",
+}
 
 
 @dataclass
@@ -90,6 +188,12 @@ class FeatureResult:
     data_type: str
     normalization_method: str
     ideal_direction: str
+    weight_importance: str = "none"
+    conjoint_role: str = "skip"
+    conjoint_levels: list[str] = field(default_factory=list)
+    conjoint_level_codes: list[str] = field(default_factory=list)
+    conjoint_question_type: str = ""
+    conjoint_section: str = ""
     output_columns: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -105,6 +209,7 @@ class PreprocessResult:
     output_feature_count: int
     warnings: list[str]
     feature_results: list[FeatureResult]
+    attribute_map_path: Path | None = None
 
 
 class PreprocessError(ValueError):
@@ -140,6 +245,26 @@ def canonical_ideal(value: object) -> str:
     return IDEAL_ALIASES.get(raw, raw)
 
 
+def canonical_weight(value: object) -> str:
+    raw = clean_text(value).lower()
+    return WEIGHT_ALIASES.get(raw, raw)
+
+
+def canonical_conjoint_role(value: object) -> str:
+    raw = clean_text(value).lower()
+    return CONJOINT_ROLE_ALIASES.get(raw, raw)
+
+
+def canonical_conjoint_question(value: object) -> str:
+    raw = clean_text(value).lower()
+    return CONJOINT_QUESTION_ALIASES.get(raw, raw)
+
+
+def canonical_conjoint_section(value: object) -> str:
+    raw = clean_text(value).lower()
+    return CONJOINT_SECTION_ALIASES.get(raw, raw)
+
+
 def canonical_included(value: object) -> str:
     raw = clean_text(value).lower()
     if raw in YES_VALUES:
@@ -147,6 +272,33 @@ def canonical_included(value: object) -> str:
     if raw in NO_VALUES:
         return "no"
     return raw
+
+
+def split_semicolon(value: object) -> list[str]:
+    text = clean_text(value)
+    if text.lower() in {"", "nan", "none", "-"}:
+        return []
+    return [part.strip() for part in text.split(";") if part.strip()]
+
+
+def slugify_level(value: str) -> str:
+    slug = value.strip().lower()
+    slug = re.sub(r"\s+", "_", slug)
+    slug = re.sub(r"[^a-z0-9_]+", "_", slug)
+    slug = re.sub(r"_+", "_", slug).strip("_")
+    return slug
+
+
+def derive_level_codes(levels: list[str], codes: list[str]) -> list[str]:
+    """Return per-level codes, defaulting to a snake_case slug of each level.
+
+    When `codes` is omitted (empty) or its length does not match `levels`, every
+    code is derived from the corresponding level via :func:`slugify_level`
+    (schema §3: ``conjoint_level_codes`` defaults to ``conjoint_levels``).
+    """
+    if codes and len(codes) == len(levels):
+        return [slugify_level(code) for code in codes]
+    return [slugify_level(level) for level in levels]
 
 
 def require_sheets(excel_path: Path, data_sheet: str, meta_sheet: str) -> None:
@@ -177,6 +329,14 @@ def normalize_metadata(meta: pd.DataFrame, warnings: list[str]) -> pd.DataFrame:
             meta[col] = "none" if col == "normalization_method" else "neutral"
             warnings.append(f"Feature_data missing '{col}', defaulted to '{meta[col].iloc[0]}'.")
 
+    # Backward compatibility: existing workbooks (tractors, smartphones,
+    # user-upload) ship without the optional conjoint columns. Materialize any
+    # missing optional column with its schema default so downstream cleaning is
+    # uniform and datasets without conjoint metadata still preprocess.
+    for col in PREPROCESS_META_COLUMNS:
+        if col not in meta.columns:
+            meta[col] = OPTIONAL_META_DEFAULTS.get(col, "")
+
     for col in PREPROCESS_META_COLUMNS:
         meta[col] = meta[col].map(clean_text)
 
@@ -199,6 +359,10 @@ def normalize_metadata(meta: pd.DataFrame, warnings: list[str]) -> pd.DataFrame:
     meta["included_in_analysis"] = meta["included_in_analysis"].map(canonical_included)
     meta["normalization_method"] = meta["normalization_method"].map(canonical_norm)
     meta["ideal_direction"] = meta["ideal_direction"].map(canonical_ideal)
+    meta["weight_importance"] = meta["weight_importance"].map(canonical_weight)
+    meta["conjoint_role"] = meta["conjoint_role"].map(canonical_conjoint_role)
+    meta["conjoint_question_type"] = meta["conjoint_question_type"].map(canonical_conjoint_question)
+    meta["conjoint_section"] = meta["conjoint_section"].map(canonical_conjoint_section)
 
     duplicate_features = meta["feature_name"][meta["feature_name"].duplicated()].tolist()
     if duplicate_features:
@@ -227,6 +391,39 @@ def included_features(meta: pd.DataFrame, warnings: list[str]) -> pd.DataFrame:
     if included.empty:
         raise PreprocessError("Feature_data marks no features as included_in_analysis=yes.")
     return included
+
+
+# Schema §4 rule 10 / §5: identifier columns are displayed but excluded from the
+# distance + conjoint math.
+IDENTIFIER_FEATURES = {"brand", "model", "class", "product_id", "product"}
+
+
+def enforce_identifier_rules(meta: pd.DataFrame, warnings: list[str]) -> pd.DataFrame:
+    """Auto-correct identifier rows per schema §4 rule 10 (warn, never hard-fail).
+
+    Any feature whose name is a known identifier (``brand``, ``model``,
+    ``class``, ``product_id``) must be ``included_in_analysis=no`` and
+    ``conjoint_role=identifier``. Existing datasets predate the convention, so we
+    fix them in place and record a warning rather than rejecting the workbook.
+    """
+    meta = meta.copy()
+    for idx, row in meta.iterrows():
+        name = normalize_label(row["feature_name"])
+        if name not in IDENTIFIER_FEATURES:
+            continue
+        if row["included_in_analysis"] != "no":
+            warnings.append(
+                f"{row['feature_name']}: identifier column forced to "
+                f"included_in_analysis=no (rule 10)."
+            )
+            meta.at[idx, "included_in_analysis"] = "no"
+        if row["conjoint_role"] != "identifier":
+            warnings.append(
+                f"{row['feature_name']}: identifier column forced to "
+                f"conjoint_role=identifier (rule 10)."
+            )
+            meta.at[idx, "conjoint_role"] = "identifier"
+    return meta
 
 
 def to_binary(series: pd.Series) -> pd.Series:
@@ -389,6 +586,53 @@ def validate_feature_rules(row: pd.Series, warnings: list[str]) -> tuple[str, st
     return data_type, norm, ideal
 
 
+def validate_conjoint_rules(row: pd.Series) -> tuple[str, list[str], list[str], str, str]:
+    """Validate and canonicalize the conjoint metadata for one feature row.
+
+    Returns ``(role, levels, level_codes, question_type, section)``. Enforces
+    schema §4 rule 8 (``conjoint_role=attribute`` needs >=2 ``conjoint_levels``
+    and a valid ``conjoint_question_type``); violations raise PreprocessError.
+    """
+    feature = row["feature_name"]
+    role = row["conjoint_role"]
+    if role not in ALLOWED_CONJOINT_ROLES:
+        raise PreprocessError(
+            f"{feature}: invalid conjoint_role='{role}'. "
+            f"Allowed: {sorted(ALLOWED_CONJOINT_ROLES)}."
+        )
+
+    question_type = row["conjoint_question_type"]
+    section = row["conjoint_section"]
+    levels = split_semicolon(row["conjoint_levels"])
+    level_codes = derive_level_codes(levels, split_semicolon(row["conjoint_level_codes"]))
+
+    if role == "attribute":
+        if len(levels) < 2:
+            raise PreprocessError(
+                f"{feature}: conjoint_role=attribute requires >=2 conjoint_levels "
+                f"separated by ';' (rule 8); found {len(levels)}."
+            )
+        if question_type not in ALLOWED_CONJOINT_QUESTIONS or question_type == "":
+            raise PreprocessError(
+                f"{feature}: conjoint_role=attribute requires a valid "
+                f"conjoint_question_type (rule 8); got '{question_type}'. "
+                f"Allowed: {sorted(q for q in ALLOWED_CONJOINT_QUESTIONS if q)}."
+            )
+
+    if question_type not in ALLOWED_CONJOINT_QUESTIONS:
+        raise PreprocessError(
+            f"{feature}: invalid conjoint_question_type='{question_type}'. "
+            f"Allowed: {sorted(ALLOWED_CONJOINT_QUESTIONS)}."
+        )
+    if section not in ALLOWED_CONJOINT_SECTIONS:
+        raise PreprocessError(
+            f"{feature}: invalid conjoint_section='{section}'. "
+            f"Allowed: {sorted(ALLOWED_CONJOINT_SECTIONS)}."
+        )
+
+    return role, levels, level_codes, question_type, section
+
+
 def transform_feature(row: pd.Series, df_raw: pd.DataFrame, warnings: list[str]) -> tuple[pd.DataFrame, FeatureResult | None]:
     feature = row["feature_name"]
     if feature not in df_raw.columns:
@@ -400,11 +644,19 @@ def transform_feature(row: pd.Series, df_raw: pd.DataFrame, warnings: list[str])
         return pd.DataFrame(index=df_raw.index), None
     data_type, norm, ideal = cleaned_rules
 
+    role, levels, level_codes, question_type, section = validate_conjoint_rules(row)
+
     result = FeatureResult(
         feature_name=feature,
         data_type=data_type,
         normalization_method=norm,
         ideal_direction=ideal,
+        weight_importance=row["weight_importance"],
+        conjoint_role=role,
+        conjoint_levels=levels,
+        conjoint_level_codes=level_codes,
+        conjoint_question_type=question_type,
+        conjoint_section=section,
     )
 
     series = df_raw[feature]
@@ -440,12 +692,35 @@ def transform_feature(row: pd.Series, df_raw: pd.DataFrame, warnings: list[str])
     return dummies, result
 
 
+def build_attribute_map(feature_results: Iterable[FeatureResult]) -> dict[str, dict[str, object]]:
+    """Map each conjoint attribute to its expanded preprocessed columns.
+
+    Consumed by Module 4 (weighted distance): the per-attribute weight
+    ``√(RI_a / m_a)`` is shared across the ``m_a`` columns one feature expands
+    into (algorithm_spec.md §6). Only ``conjoint_role == "attribute"`` features
+    are included.
+    """
+    mapping: dict[str, dict[str, object]] = {}
+    for feature in feature_results:
+        if feature.conjoint_role != "attribute":
+            continue
+        columns = list(feature.output_columns)
+        mapping[feature.feature_name] = {
+            "columns": columns,
+            "m_a": len(columns),
+            "conjoint_levels": list(feature.conjoint_levels),
+            "conjoint_level_codes": list(feature.conjoint_level_codes),
+        }
+    return mapping
+
+
 def preprocess_workbook(
     excel_path: Path,
     output_path: Path,
     data_sheet: str = DATA_SHEET,
     meta_sheet: str = META_SHEET,
     validation_report: Path | None = None,
+    attribute_map: Path | None = None,
 ) -> PreprocessResult:
     warnings: list[str] = []
     require_sheets(excel_path, data_sheet, meta_sheet)
@@ -453,6 +728,7 @@ def preprocess_workbook(
     df_raw = pd.read_excel(excel_path, sheet_name=data_sheet)
     meta_raw = pd.read_excel(excel_path, sheet_name=meta_sheet)
     meta = normalize_metadata(meta_raw, warnings)
+    meta = enforce_identifier_rules(meta, warnings)
     meta_inc = included_features(meta, warnings)
 
     transformed_frames: list[pd.DataFrame] = []
@@ -482,6 +758,11 @@ def preprocess_workbook(
         warnings=warnings,
         feature_results=feature_results,
     )
+
+    if attribute_map is not None:
+        mapping = build_attribute_map(feature_results)
+        write_attribute_map(mapping, attribute_map)
+        result.attribute_map_path = attribute_map
 
     if validation_report is not None:
         write_validation_report(validation_report, result)
@@ -534,6 +815,9 @@ def write_validation_report(path: Path, result: PreprocessResult) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+ATTRIBUTE_MAP_FILENAME = "attribute_column_map.json"
+
+
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Universal Feature_data-driven preprocessor.")
     parser.add_argument("--excel", type=Path, default=Path(DEFAULT_EXCEL))
@@ -541,22 +825,40 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--data-sheet", default=DATA_SHEET)
     parser.add_argument("--meta-sheet", default=META_SHEET)
     parser.add_argument("--validation-report", type=Path, default=None)
+    parser.add_argument(
+        "--attribute-map",
+        type=Path,
+        default=None,
+        help="Where to write attribute_column_map.json. Defaults to "
+        f"'{ATTRIBUTE_MAP_FILENAME}' next to --output.",
+    )
     return parser.parse_args(argv)
+
+
+def resolve_attribute_map_path(output_path: Path, requested: Path | None) -> Path:
+    """Resolve the attribute-map destination, defaulting next to the output CSV."""
+    if requested is not None:
+        return requested
+    return output_path.parent / ATTRIBUTE_MAP_FILENAME
 
 
 def main(argv: Iterable[str] | None = None) -> None:
     args = parse_args(argv)
+    attribute_map_path = resolve_attribute_map_path(args.output, args.attribute_map)
     result = preprocess_workbook(
         excel_path=args.excel,
         output_path=args.output,
         data_sheet=args.data_sheet,
         meta_sheet=args.meta_sheet,
         validation_report=args.validation_report,
+        attribute_map=attribute_map_path,
     )
     print("Universal preprocessing complete.")
     print(f"Input: {result.excel_path} (rows={result.data_rows})")
     print(f"Included source features: {result.included_feature_count}")
     print(f"Output: {result.output_path} (features={result.output_feature_count})")
+    if result.attribute_map_path is not None:
+        print(f"Attribute column map: {result.attribute_map_path}")
     if args.validation_report is not None:
         print(f"Validation report: {args.validation_report}")
 
