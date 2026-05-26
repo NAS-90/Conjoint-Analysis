@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+Pro:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1280px; height: 720px;
+    font-family: 'Source Serif Pro', Georgia, serif;
+    color: #1a1a1a;
+    background: #ffffff;
+    padding: 45px 70px;
+    position: relative;
+  }
+  .header-bar {
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 12px;
+    margin-bottom: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+  .meta { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #666; }
+  .subtitle { font-size: 14px; color: #555; font-style: italic; margin-bottom: 14px; }
+
+  table.main { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.main th {
+    background: #1a1a1a; color: white;
+    padding: 8px 10px; text-align: left;
+    font-weight: 500; font-family: 'Source Serif Pro', serif; font-size: 12.5px;
+  }
+  table.main td {
+    padding: 9px 10px;
+    border-bottom: 1px solid #e4e4e0;
+    vertical-align: top;
+  }
+  table.main tr:nth-child(even) td { background: #fafaf5; }
+  .col-name { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: #b91c1c; width: 70px; }
+  .raw { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #333; }
+  .dims {
+    font-size: 11px;
+    color: #c2410c;
+    font-family: 'IBM Plex Mono', monospace;
+    width: 80px;
+    text-align: center;
+    font-weight: 600;
+  }
+  .atomic {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    color: #0a6e2e;
+    line-height: 1.6;
+  }
+  .atomic .tag {
+    display: inline-block;
+    background: #d1fae5;
+    border: 1px solid #0a6e2e;
+    padding: 1px 6px;
+    margin: 1px 2px;
+    border-radius: 2px;
+  }
+
+  .summary {
+    display: flex;
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .sum-box {
+    flex: 1;
+    background: white;
+    border: 1.5px solid #1a1a1a;
+    padding: 10px 14px;
+  }
+  .sum-num { font-size: 26px; font-weight: 700; color: #b91c1c; line-height: 1.1; }
+  .sum-label { font-size: 11px; color: #555; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+  .impact {
+    background: #1a1a1a;
+    color: white;
+    padding: 10px 16px;
+    font-size: 12.5px;
+    margin-top: 12px;
+    line-height: 1.5;
+  }
+  .impact b { color: #fcd34d; }
+  .impact code { background: rgba(255,255,255,0.1); padding: 1px 6px; border-radius: 2px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+
+  .footer {
+    position: absolute;
+    bottom: 18px;
+    left: 70px;
+    right: 70px;
+    display: flex;
+    justify-content: space-between;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    color: #999;
+    border-top: 1px solid #ddd;
+    padding-top: 8px;
+  }
+</style>
+</head>
+<body>
+  <div class="header-bar">
+    <h1>Issue #2 — Composite Field Explosion</h1>
+    <span class="meta">Slide 3 / 5 · Critical</span>
+  </div>
+  <div class="subtitle">A single cell packs 3–5 independent numeric dimensions — distance matrix cannot consume directly</div>
+
+  <table class="main">
+    <thead>
+      <tr>
+        <th>Column</th>
+        <th>Raw cell value (row 0)</th>
+        <th>Dims packed</th>
+        <th>Should be exploded into</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-name">camera</td>
+        <td class="raw">"50 MP + 48 MP + 32 MP Triple Rear &amp; 16 MP Front Camera"</td>
+        <td class="dims">5</td>
+        <td class="atomic">
+          <span class="tag">rear_main_mp=50</span><span class="tag">rear_ultra_mp=48</span><span class="tag">rear_tele_mp=32</span><span class="tag">rear_count=3</span><span class="tag">front_mp=16</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="col-name">display</td>
+        <td class="raw">"6.7 inches, 1440 x 3216 px, 120 Hz Display with Punch Hole"</td>
+        <td class="dims">5</td>
+        <td class="atomic">
+          <span class="tag">size_in=6.7</span><span class="tag">res_w=1440</span><span class="tag">res_h=3216</span><span class="tag">refresh_hz=120</span><span class="tag">notch=punch_hole</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="col-name">ram</td>
+        <td class="raw">"12 GB RAM, 256 GB inbuilt"</td>
+        <td class="dims">2</td>
+        <td class="atomic">
+          <span class="tag">ram_gb=12</span><span class="tag">storage_gb=256</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="col-name">battery</td>
+        <td class="raw">"5000 mAh Battery with 100W Fast Charging"</td>
+        <td class="dims">2</td>
+        <td class="atomic">
+          <span class="tag">battery_mah=5000</span><span class="tag">charging_w=100</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="col-name">processor</td>
+        <td class="raw">"Snapdragon 8 Gen2, Octa Core, 3.2 GHz Processor"</td>
+        <td class="dims">3</td>
+        <td class="atomic">
+          <span class="tag">chipset=SD_8G2</span><span class="tag">cores=8</span><span class="tag">clock_ghz=3.2</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="col-name">sim</td>
+        <td class="raw">"Dual Sim, 3G, 4G, 5G, VoLTE, Wi-Fi, NFC" (28 unique combos)</td>
+        <td class="dims">7</td>
+        <td class="atomic">
+          <span class="tag">dual_sim=1</span><span class="tag">has_5g=1</span><span class="tag">has_volte=1</span><span class="tag">has_nfc=1</span><span class="tag">has_ir=0</span>…
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="summary">
+    <div class="sum-box">
+      <div class="sum-num">6 → 24</div>
+      <div class="sum-label">columns to atomic features after parsing</div>
+    </div>
+    <div class="sum-box">
+      <div class="sum-num">487</div>
+      <div class="sum-label">rows match the "Triple Rear" camera pattern</div>
+    </div>
+    <div class="sum-box">
+      <div class="sum-num">15</div>
+      <div class="sum-label">distinct camera templates (incl. foldable, dual-display)</div>
+    </div>
+  </div>
+
+  <div class="impact">
+    <b>Impact on conjoint analysis:</b> distance cannot be computed on raw strings, and OLS part-worth utilities for "camera" require <b>per-dimension</b> features (MP, sensor count, front vs rear). Current schema collapses all 5 dimensions into a single nominal token — losing the signal we need.<br>
+    <b>Fix:</b> write a per-column parser (<code>preprocessing_smartphones.py</code> already exists — needs extension).
+  </div>
+
+  <div class="footer">
+    <span>Source: smart phone dataset.xlsx → Edited → camera/display/ram/battery/processor/sim</span>
+    <span>Verified 2026-05-19</span>
+  </div>
+</body>
+</html>
