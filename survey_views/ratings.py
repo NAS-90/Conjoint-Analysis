@@ -1,14 +1,16 @@
-"""Part B-1 ratings route — the polished multi-section desirability survey.
+"""Part B-1 ratings route — single-page-per-attribute desirability survey.
 
-Loads a :class:`QuestionnaireSpec` (via :mod:`survey_views.spec_source`), renders
-the attributes selected by the respondent with a 1..5 rating per level, tracks
-completion progress, and on submit assembles + validates a downloadable
-``responses.csv`` using :mod:`conjoint.questionnaire`. The default flow renders
-all active Part B-1 attributes; respondents can instead use a guided profile or
-choose a custom subset, and skipped columns remain blank in the exported CSV.
+Loads a :class:`QuestionnaireSpec` (via :mod:`survey_views.spec_source`),
+renders one attribute per page through
+:func:`survey_views.navigation.render_sequence`, tracks completion via the
+shared step counter, and on Finish assembles + validates a downloadable
+``responses.csv`` using :mod:`conjoint.questionnaire`. Respondents can still
+opt into the Full / Guided profile / Custom subset flows from the intro of
+the page; the choice scopes the visible attribute list before the
+sequential controller takes over.
 
-Only the active Part B-1 attributes are shown; all rating/validation logic is
-delegated to the tested core so this view stays thin.
+Only the active Part B-1 attributes are shown; all rating/validation logic
+is delegated to the tested core so this view stays thin.
 """
 
 from __future__ import annotations
@@ -17,18 +19,29 @@ import streamlit as st
 
 from conjoint import questionnaire as q
 from conjoint.questionnaire import AttributeQuestion, QuestionnaireSpec
+from survey_views.navigation import (
+    Step,
+    get_answer,
+    record_answer,
+    render_sequence,
+    reset_stage,
+    stage_answers,
+)
 from survey_views.spec_source import load_spec
 from survey_views.state import (
     ATTRIBUTE_SELECTION_KEY,
     GUIDED_PROFILE_KEY,
     QUESTION_FLOW_KEY,
     RESPONDENT_KEY,
-    rating_key,
 )
 
 FLOW_ALL = "Full questionnaire"
 FLOW_GUIDED = "Guided profile"
 FLOW_CUSTOM = "Choose attributes"
+
+#: Stage identifier under which per-attribute answers are stored
+#: (``stage_answers("ratings")[attribute_name] = {level_code: rating}``).
+STAGE = "ratings"
 
 GUIDED_PROFILES: dict[str, tuple[str, ...]] = {
     "Performance": (
@@ -67,6 +80,9 @@ GUIDED_PROFILES: dict[str, tuple[str, ...]] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Attribute selection (Full / Guided / Custom)
+# ---------------------------------------------------------------------------
 def _matches_profile(attr: AttributeQuestion, keywords: tuple[str, ...]) -> bool:
     """Return whether an attribute appears relevant to a guided profile."""
     haystack = " ".join(
@@ -83,7 +99,7 @@ def _matches_profile(attr: AttributeQuestion, keywords: tuple[str, ...]) -> bool
 def _select_attributes(
     active: tuple[AttributeQuestion, ...],
 ) -> tuple[tuple[AttributeQuestion, ...], str]:
-    """Render the dynamic routing controls and return attributes to ask."""
+    """Render the routing controls and return the attributes to ask."""
     names = [attr.feature_name for attr in active]
     by_name = {attr.feature_name: attr for attr in active}
 
@@ -129,47 +145,64 @@ def _select_attributes(
     return active, FLOW_ALL
 
 
-def _collect_answers(
-    spec: QuestionnaireSpec, attributes: tuple[AttributeQuestion, ...]
-) -> dict[str, int | None]:
-    """Render one section per active attribute; return ``{column: rating|None}``.
-
-    Ratings start unselected (``index=None``) so progress is meaningful and the
-    respondent makes an explicit choice rather than accepting a default.
-    """
+# ---------------------------------------------------------------------------
+# Single-attribute step renderer
+# ---------------------------------------------------------------------------
+def _attribute_step(spec: QuestionnaireSpec, attr: AttributeQuestion) -> Step:
+    """Build a :class:`Step` that renders one attribute's level ratings."""
     scale = spec.scale
     options = list(range(int(scale.min), int(scale.max) + 1))
-    answers: dict[str, int | None] = {}
 
-    for position, attr in enumerate(attributes, start=1):
-        with st.container(border=True):
-            st.subheader(f"{position}. {attr.feature_name}")
-            if attr.description:
-                st.caption(attr.description)
-            st.write(attr.prompt)
-            st.caption(f"{scale.min} = least desirable · {scale.max} = most desirable")
-            for level in attr.levels:
-                column = q.response_column(attr.feature_name, level.code)
-                answers[column] = st.radio(
-                    f"**{level.label}**  (`{level.code}`)",
-                    options=options,
-                    index=None,
-                    horizontal=True,
-                    key=rating_key(column),
-                )
-    return answers
+    def render() -> bool:
+        prior = get_answer(STAGE, attr.feature_name, default={}) or {}
+        if not isinstance(prior, dict):
+            prior = {}
+
+        if attr.description:
+            st.caption(attr.description)
+        st.write(attr.prompt)
+        st.caption(f"{scale.min} = least desirable · {scale.max} = most desirable")
+
+        ratings: dict[str, int] = {}
+        for level in attr.levels:
+            previous = prior.get(level.code)
+            try:
+                default_index = options.index(int(previous)) if previous is not None else None
+            except (TypeError, ValueError):
+                default_index = None
+            value = st.radio(
+                f"**{level.label}**  (`{level.code}`)",
+                options=options,
+                index=default_index,
+                horizontal=True,
+                key=f"survey_rating__{attr.feature_name}__{level.code}",
+            )
+            if value is not None:
+                ratings[level.code] = int(value)
+
+        record_answer(STAGE, attr.feature_name, ratings)
+        return len(ratings) == len(attr.levels)
+
+    return Step(identifier=attr.feature_name, title=attr.feature_name, render=render)
 
 
-def _completed_attributes(
-    attributes: tuple[AttributeQuestion, ...], answers: dict[str, int | None]
-) -> int:
-    """Count attributes whose every level has been rated."""
-    completed = 0
-    for attr in attributes:
-        columns = [q.response_column(attr.feature_name, lv.code) for lv in attr.levels]
-        if all(answers.get(col) is not None for col in columns):
-            completed += 1
-    return completed
+# ---------------------------------------------------------------------------
+# Finish: assemble + validate + download
+# ---------------------------------------------------------------------------
+def _flat_answers(
+    spec: QuestionnaireSpec, attributes: tuple[AttributeQuestion, ...]
+) -> dict[str, int | None]:
+    """Flatten ``stage_answers("ratings")`` into the column form."""
+    per_attr = stage_answers(STAGE)
+    flat: dict[str, int | None] = {}
+    for attr in spec.active_attributes:
+        ratings = per_attr.get(attr.feature_name, {}) or {}
+        in_scope = attr in attributes
+        for level in attr.levels:
+            column = q.response_column(attr.feature_name, level.code)
+            value = ratings.get(level.code) if in_scope else None
+            flat[column] = value
+    return flat
 
 
 def _offer_download(spec: QuestionnaireSpec, answers: dict[str, int | None]) -> None:
@@ -195,8 +228,22 @@ def _offer_download(spec: QuestionnaireSpec, answers: dict[str, int | None]) -> 
     )
 
 
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+def _completed_attributes(attributes: tuple[AttributeQuestion, ...]) -> int:
+    """Count attributes whose every level has been rated in stage state."""
+    per_attr = stage_answers(STAGE)
+    completed = 0
+    for attr in attributes:
+        ratings = per_attr.get(attr.feature_name, {}) or {}
+        if all(level.code in ratings for level in attr.levels):
+            completed += 1
+    return completed
+
+
 def render_questionnaire() -> None:
-    """Render the Part B-1 ratings page."""
+    """Render the Part B-1 ratings page (single attribute per page)."""
     st.title("Part B-1 — desirability ratings")
 
     spec = load_spec()
@@ -226,21 +273,35 @@ def render_questionnaire() -> None:
             "columns stay blank in the downloaded CSV."
         )
 
-    answers = _collect_answers(spec, selected_attributes)
+    steps = tuple(_attribute_step(spec, attr) for attr in selected_attributes)
 
-    completed = _completed_attributes(selected_attributes, answers)
-    total = len(selected_attributes)
-    st.progress(
-        completed / total, text=f"Progress: {completed}/{total} attributes rated"
-    )
+    completed_state = st.session_state.setdefault("survey_ratings_finished", False)
+    finished_flag = bool(completed_state)
 
-    if st.button("Build responses.csv", type="primary"):
+    def on_complete() -> None:
+        st.session_state["survey_ratings_finished"] = True
+
+    if not finished_flag:
+        render_sequence(
+            STAGE,
+            steps,
+            on_complete=on_complete,
+            progress_label="Attribute",
+        )
+
+    if st.session_state.get("survey_ratings_finished"):
+        completed = _completed_attributes(selected_attributes)
+        total = len(selected_attributes)
         if completed < total:
             st.warning(
                 f"{total - completed} attribute(s) not fully rated — those cells "
                 "stay blank in the CSV."
             )
-        _offer_download(spec, answers)
+        _offer_download(spec, _flat_answers(spec, selected_attributes))
+        if st.button("Restart questionnaire"):
+            st.session_state["survey_ratings_finished"] = False
+            reset_stage(STAGE)
+            st.rerun()
 
 
 if __name__ == "__main__":  # pragma: no cover - manual ``streamlit run`` of the page
