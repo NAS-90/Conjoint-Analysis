@@ -16,14 +16,14 @@ from __future__ import annotations
 import streamlit as st
 
 from survey_views.state import (
-    ACBC_TOURNAMENT_PAGE_KEY,
+    ACBC_BYO_PAGE_KEY,
     QUESTIONNAIRE_PAGE_KEY,
     RESPONDENT_KEY,
     SURVEY_MODE_KEY,
 )
 
 MODE_RATING = "Part B-1 ratings (OLS)"
-MODE_ACBC = "ACBC Tournament (MNL)"
+MODE_ACBC = "ACBC BYO → Screener → Tournament (MNL)"
 MODE_OPTIONS: tuple[str, ...] = (MODE_RATING, MODE_ACBC)
 
 
@@ -65,12 +65,10 @@ def render_intro() -> None:
     )
 
     mode = st.session_state.get(SURVEY_MODE_KEY, MODE_RATING)
-    target_key = (
-        QUESTIONNAIRE_PAGE_KEY if mode == MODE_RATING else ACBC_TOURNAMENT_PAGE_KEY
-    )
+    target_key = QUESTIONNAIRE_PAGE_KEY if mode == MODE_RATING else ACBC_BYO_PAGE_KEY
     page = st.session_state.get(target_key)
 
-    label = "Start ratings →" if mode == MODE_RATING else "Start Tournament →"
+    label = "Start ratings →" if mode == MODE_RATING else "Start ACBC (BYO) →"
     if page is not None and st.button(label, type="primary"):
         st.switch_page(page)
     st.caption("You can also use the **sidebar** to jump between routes.")
