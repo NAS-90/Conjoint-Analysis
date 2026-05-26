@@ -357,6 +357,257 @@ def fit_from_responses(
 
 
 # ---------------------------------------------------------------------------
+# Hierarchical Bayes — per-respondent betas via Metropolis-within-Gibbs
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class HBFit:
+    """Result of a Hierarchical-Bayes fit (per-respondent + population)."""
+
+    respondent_ids: tuple[object, ...]
+    beta_means: np.ndarray             # (n_respondents, n_features)
+    population_mean: np.ndarray        # (n_features,)
+    population_cov: np.ndarray         # (n_features, n_features)
+    rhat: np.ndarray                   # (n_features,) Gelman-Rubin convergence
+    column_names: tuple[str, ...]
+    level_map: "OrderedDict[str, tuple[str, ...]]"
+
+
+def _respondent_blocks(
+    df: pd.DataFrame, level_map: "OrderedDict[str, tuple[str, ...]]"
+) -> list[tuple[object, np.ndarray, np.ndarray, np.ndarray]]:
+    """Per-respondent ``(respondent_id, X, y, group_ids)`` blocks."""
+    blocks: list[tuple[object, np.ndarray, np.ndarray, np.ndarray]] = []
+    tournament = df[df[STAGE_COL] == STAGE_TOURNAMENT]
+    for respondent, sub in tournament.groupby(RESPONDENT_COL, sort=False):
+        X, y, groups, _, _ = build_tournament_matrix(
+            sub.assign(**{STAGE_COL: STAGE_TOURNAMENT}), level_map
+        )
+        blocks.append((respondent, X, y, groups))
+    return blocks
+
+
+def _propose_beta(
+    current: np.ndarray, X: np.ndarray, y: np.ndarray, groups: np.ndarray,
+    population_mean: np.ndarray, population_precision: np.ndarray,
+    step_scale: float, rng: np.random.Generator,
+) -> np.ndarray:
+    """One Metropolis-Hastings step for one respondent's β.
+
+    Random-walk proposal with isotropic covariance ``step_scale^2 * I``;
+    target is the MNL likelihood times a multivariate-normal prior at
+    ``population_mean``.
+    """
+    proposal = current + step_scale * rng.standard_normal(current.shape[0])
+
+    def log_target(beta: np.ndarray) -> float:
+        ll = mnl_log_likelihood(beta, X, y, groups)
+        diff = beta - population_mean
+        prior = -0.5 * float(diff @ population_precision @ diff)
+        return ll + prior
+
+    log_ratio = log_target(proposal) - log_target(current)
+    if np.log(rng.uniform()) < log_ratio:
+        return proposal
+    return current
+
+
+def fit_hb(
+    df: pd.DataFrame,
+    *,
+    attribute_levels: Mapping[str, Sequence[str]] | None = None,
+    n_iter: int = 2000,
+    burn_in: int = 1000,
+    thinning: int = 5,
+    n_chains: int = 2,
+    step_scale: float = 0.5,
+    prior_cov_scale: float = 4.0,
+    seed: int | None = None,
+) -> HBFit:
+    """Hierarchical-Bayes fit via Metropolis-within-Gibbs (pure numpy).
+
+    Hierarchy:
+        β_i ~ Normal(μ, Σ)              # respondent-level
+        μ   ~ Normal(0, prior_cov_scale·I)   # weak prior on the mean
+        Σ   ~ Inverse-Wishart(I, n_features + 2)   # weak prior on the cov
+
+    Sampling alternates:
+        1. β_i | μ, Σ, data — Metropolis step per respondent.
+        2. μ    | β, Σ      — conjugate Normal update.
+        3. Σ    | β, μ      — conjugate Inverse-Wishart update.
+
+    Returns posterior-mean β per respondent + population (μ, Σ) and a
+    Gelman-Rubin Rhat per feature across chains.
+    """
+    if n_iter <= burn_in:
+        raise ValueError("n_iter must exceed burn_in")
+    if thinning < 1:
+        raise ValueError("thinning must be >= 1")
+    if n_chains < 2:
+        raise ValueError("n_chains must be >= 2 for Rhat")
+
+    level_map = _level_map_from_frame(
+        df[df[STAGE_COL] == STAGE_TOURNAMENT], attribute_levels
+    )
+    blocks = _respondent_blocks(df, level_map)
+    if not blocks:
+        raise ValueError("no respondent Tournament data to fit HB")
+
+    n_resp = len(blocks)
+    n_features = blocks[0][1].shape[1]
+    if n_features == 0:
+        raise ValueError("no features in the design matrix")
+    columns = tuple(
+        f"{attribute}__{code}"
+        for attribute, levels in level_map.items()
+        for code in levels[:-1]
+    )
+
+    chain_means: list[np.ndarray] = []  # per-chain β means after burn-in
+    population_samples_all: list[np.ndarray] = []  # per-chain μ samples
+    rng_master = np.random.default_rng(seed)
+
+    for chain in range(n_chains):
+        rng = np.random.default_rng(rng_master.integers(0, 2**31 - 1))
+        betas = np.zeros((n_resp, n_features))
+        population_mean = np.zeros(n_features)
+        population_cov = np.eye(n_features) * prior_cov_scale
+        population_precision = np.linalg.inv(population_cov)
+
+        kept_betas: list[np.ndarray] = []  # post-burn-in β snapshots
+        kept_mu: list[np.ndarray] = []
+
+        for step in range(n_iter):
+            # Respondent βs (Metropolis).
+            for i, (_, X, y, groups) in enumerate(blocks):
+                betas[i] = _propose_beta(
+                    betas[i], X, y, groups,
+                    population_mean, population_precision,
+                    step_scale, rng,
+                )
+
+            # μ | β, Σ — conjugate Normal posterior.
+            beta_mean = betas.mean(axis=0)
+            prior_precision = np.eye(n_features) / prior_cov_scale
+            posterior_precision = prior_precision + n_resp * population_precision
+            posterior_cov = np.linalg.inv(posterior_precision)
+            posterior_mean = posterior_cov @ (n_resp * population_precision @ beta_mean)
+            population_mean = rng.multivariate_normal(posterior_mean, posterior_cov)
+
+            # Σ | β, μ — Inverse-Wishart posterior.
+            centred = betas - population_mean
+            scatter = centred.T @ centred + np.eye(n_features)
+            df_iw = n_resp + n_features + 2
+            population_cov = _sample_inverse_wishart(scatter, df_iw, rng)
+            population_precision = np.linalg.inv(population_cov)
+
+            if step >= burn_in and (step - burn_in) % thinning == 0:
+                kept_betas.append(betas.copy())
+                kept_mu.append(population_mean.copy())
+
+        if not kept_betas:
+            raise RuntimeError("no samples retained after burn-in / thinning")
+        chain_means.append(np.mean(np.stack(kept_betas), axis=0))
+        population_samples_all.append(np.stack(kept_mu))
+
+    chain_population = np.stack([samples.mean(axis=0) for samples in population_samples_all])
+    population_mean = chain_population.mean(axis=0)
+    # Posterior covariance: pooled across chains.
+    chain_cov = np.mean(
+        [np.cov(samples.T) for samples in population_samples_all], axis=0
+    )
+
+    rhat = _gelman_rubin(population_samples_all)
+
+    # Per-respondent β is the chain-averaged posterior mean.
+    beta_means = np.mean(np.stack(chain_means), axis=0)
+
+    return HBFit(
+        respondent_ids=tuple(rid for rid, _, _, _ in blocks),
+        beta_means=beta_means,
+        population_mean=population_mean,
+        population_cov=chain_cov,
+        rhat=rhat,
+        column_names=columns,
+        level_map=level_map,
+    )
+
+
+def _sample_inverse_wishart(scatter: np.ndarray, df_iw: int, rng: np.random.Generator) -> np.ndarray:
+    """Sample from an inverse-Wishart via Bartlett decomposition."""
+    p = scatter.shape[0]
+    L = np.linalg.cholesky(np.linalg.inv(scatter))
+    A = np.zeros((p, p))
+    for i in range(p):
+        A[i, i] = np.sqrt(rng.chisquare(df_iw - i))
+        for j in range(i):
+            A[i, j] = rng.standard_normal()
+    LA = L @ A
+    wishart = LA @ LA.T
+    return np.linalg.inv(wishart)
+
+
+def _gelman_rubin(chains: list[np.ndarray]) -> np.ndarray:
+    """Per-feature Gelman-Rubin Rhat across post-burn-in chain samples."""
+    if len(chains) < 2:
+        return np.full(chains[0].shape[1], np.nan)
+    stacked = np.stack(chains)  # (n_chains, n_samples, n_features)
+    n_chains, n_samples, _ = stacked.shape
+    chain_mean = stacked.mean(axis=1)              # (n_chains, n_features)
+    overall_mean = chain_mean.mean(axis=0)         # (n_features,)
+    between = n_samples * ((chain_mean - overall_mean) ** 2).sum(axis=0) / (n_chains - 1)
+    within = stacked.var(axis=1, ddof=1).mean(axis=0)
+    var_hat = (n_samples - 1) / n_samples * within + between / n_samples
+    rhat = np.sqrt(var_hat / np.where(within > 0, within, 1.0))
+    return rhat
+
+
+def hb_to_utilities(fit: HBFit) -> pd.DataFrame:
+    """Reconstruct per-respondent full-level utilities from an HB fit.
+
+    The returned frame uses the same column convention as
+    :func:`conjoint.estimate.estimate_utilities`:
+    ``respondent`` + one ``{attribute}__{level_code}`` column per level
+    (dropped level reconstructed as ``-Σ`` surviving betas).
+    """
+    rows: list[dict[str, object]] = []
+    for respondent_id, beta in zip(fit.respondent_ids, fit.beta_means):
+        row: dict[str, object] = {RESPONDENT_COL: respondent_id}
+        for attribute, levels in fit.level_map.items():
+            survivors_sum = 0.0
+            for level in levels[:-1]:
+                column = f"{attribute}__{level}"
+                idx = fit.column_names.index(column)
+                value = float(beta[idx])
+                row[column] = value
+                survivors_sum += value
+            row[f"{attribute}__{levels[-1]}"] = -survivors_sum
+        rows.append(row)
+    columns = [RESPONDENT_COL] + [
+        f"{attribute}__{level}"
+        for attribute, levels in fit.level_map.items()
+        for level in levels
+    ]
+    return pd.DataFrame(rows, columns=columns)
+
+
+def hb_attribute_importance(fit: HBFit) -> pd.DataFrame:
+    """Compute attribute importance from the *population mean* of an HB fit.
+
+    Same Range_A / Σ Range formula as :func:`attribute_importance`, but
+    sourced from the HB population posterior.
+    """
+    mnl_proxy = MNLFit(
+        beta=fit.population_mean,
+        log_likelihood=0.0,
+        n_tasks=0,
+        column_names=fit.column_names,
+        level_map=fit.level_map,
+        converged=True,
+    )
+    return attribute_importance(mnl_proxy)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 def _load_attribute_levels(path: PathLike | None) -> dict[str, list[str]] | None:
@@ -382,7 +633,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the ``python -m conjoint.acbc.estimate`` argument parser."""
     parser = argparse.ArgumentParser(
         prog="python -m conjoint.acbc.estimate",
-        description="ACBC MNL estimation (Tournament rows -> importance.csv).",
+        description="ACBC MNL/HB estimation (Tournament rows -> importance.csv).",
     )
     parser.add_argument(
         "--responses",
@@ -406,13 +657,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--out-utilities",
         type=Path,
         default=None,
-        help="optional per-level utilities JSON output.",
+        help="optional per-level utilities JSON output (population MNL).",
     )
     parser.add_argument(
         "--out-rlh",
         type=Path,
         default=None,
         help="optional per-respondent RLH diagnostic CSV.",
+    )
+    parser.add_argument(
+        "--hb",
+        action="store_true",
+        help="run Hierarchical-Bayes after the MNL fit (slower, per-respondent betas).",
+    )
+    parser.add_argument(
+        "--hb-iter",
+        type=int,
+        default=2000,
+        help="number of HB iterations (default 2000).",
+    )
+    parser.add_argument(
+        "--hb-burnin",
+        type=int,
+        default=1000,
+        help="burn-in iterations dropped before posterior summaries (default 1000).",
+    )
+    parser.add_argument(
+        "--out-hb-utilities",
+        type=Path,
+        default=None,
+        help="per-respondent HB utilities CSV (matches conjoint.io.utilities schema).",
     )
     return parser
 
@@ -455,6 +729,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Wrote per-respondent RLH for %d respondents to %s",
             len(rlh_frame), args.out_rlh
         )
+
+    if args.hb:
+        hb_fit = fit_hb(
+            df,
+            attribute_levels=attribute_levels,
+            n_iter=args.hb_iter,
+            burn_in=args.hb_burnin,
+        )
+        logger.info(
+            "HB fit: %d respondents, Rhat max=%.3f", len(hb_fit.respondent_ids),
+            float(np.nanmax(hb_fit.rhat)),
+        )
+        if args.out_hb_utilities is not None:
+            hb_utilities = hb_to_utilities(hb_fit)
+            from conjoint.io import write_utilities
+
+            write_utilities(hb_utilities, args.out_hb_utilities)
+            logger.info(
+                "Wrote HB per-respondent utilities for %d respondents to %s",
+                len(hb_utilities), args.out_hb_utilities,
+            )
 
     for _, row in importance.iterrows():
         print(
