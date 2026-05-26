@@ -1,7 +1,8 @@
 """Standalone conjoint survey app — its own ``st.navigation`` router.
 
-Decoupled from the analysis dashboard (``app.py``): a respondent opens this app
-on its own URL, fills in Part B-1 ratings and downloads ``responses.csv``.
+Decoupled from the analysis dashboard (``app.py``): a respondent opens
+this app on its own URL, picks a mode on the intro page and works
+through the chosen flow.
 
 Launch with::
 
@@ -9,13 +10,17 @@ Launch with::
 
 Routes (rendered in the sidebar nav, grouped under "Survey"):
 
-* **Welcome** — instructions + respondent id (:mod:`survey_views.intro`).
-* **Part B-1 ratings** — the desirability questionnaire
-  (:mod:`survey_views.ratings`); on submit it builds + validates a downloadable
-  ``responses.csv`` via :mod:`conjoint.questionnaire`.
+* **Welcome** — instructions, respondent id, survey-mode toggle
+  (:mod:`survey_views.intro`).
+* **Part B-1 ratings** — single-page-per-attribute desirability flow
+  (:mod:`survey_views.ratings`); on Finish it builds + validates a
+  downloadable ``responses.csv`` for :mod:`conjoint.estimate`.
+* **ACBC Tournament** — single-page-per-choice-task flow
+  (:mod:`survey_views.acbc_tournament`); on Finish it builds + validates
+  a downloadable ``acbc_responses.csv`` for :mod:`conjoint.acbc.estimate`.
 
-The view code lives in :mod:`survey_views`; this entry point only wires the
-router together.
+The view code lives in :mod:`survey_views`; this entry point only wires
+the router together.
 """
 
 from __future__ import annotations
@@ -29,9 +34,13 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:  # allow ``streamlit run survey.py`` from anywhere
     sys.path.insert(0, str(ROOT))
 
-from survey_views.intro import render_intro  # noqa: E402  (after sys.path bootstrap)
+from survey_views.acbc_tournament import render_tournament  # noqa: E402
+from survey_views.intro import render_intro  # noqa: E402
 from survey_views.ratings import render_questionnaire  # noqa: E402
-from survey_views.state import QUESTIONNAIRE_PAGE_KEY  # noqa: E402
+from survey_views.state import (  # noqa: E402
+    ACBC_TOURNAMENT_PAGE_KEY,
+    QUESTIONNAIRE_PAGE_KEY,
+)
 
 
 def main() -> None:
@@ -44,10 +53,20 @@ def main() -> None:
     questionnaire_page = st.Page(
         render_questionnaire, title="Part B-1 ratings", icon="📝", url_path="ratings"
     )
-    # Stash the ratings page so the intro's "Start" button can switch to it.
-    st.session_state[QUESTIONNAIRE_PAGE_KEY] = questionnaire_page
+    tournament_page = st.Page(
+        render_tournament,
+        title="ACBC Tournament",
+        icon="🏆",
+        url_path="acbc-tournament",
+    )
 
-    st.navigation({"Survey": [intro_page, questionnaire_page]}).run()
+    # Stash pages so the intro's "Start" button can switch_page().
+    st.session_state[QUESTIONNAIRE_PAGE_KEY] = questionnaire_page
+    st.session_state[ACBC_TOURNAMENT_PAGE_KEY] = tournament_page
+
+    st.navigation(
+        {"Survey": [intro_page, questionnaire_page, tournament_page]}
+    ).run()
 
 
 main()

@@ -1,34 +1,53 @@
-"""Survey landing route — instructions + respondent id capture.
+"""Survey landing route — instructions, mode toggle, respondent id capture.
 
-Rendered by the ``survey.py`` ``st.navigation`` router as the default page. The
-respondent id is stored in :data:`survey_views.state.RESPONDENT_KEY` so the
-ratings page can reuse it when assembling ``responses.csv``.
+Rendered by the ``survey.py`` ``st.navigation`` router as the default page.
+The respondent id is stored in :data:`survey_views.state.RESPONDENT_KEY`
+so downstream stages can reuse it. The survey **mode** chooser
+(:data:`SURVEY_MODE_KEY`) decides whether the respondent runs:
+
+* the legacy **Part B-1 ratings** flow (OLS path, current dashboard), or
+* the **ACBC** flow (Tournament now; BYO + Screener as Phase 3 adds
+  them) which produces the long-format ``acbc_responses.csv`` consumed
+  by :mod:`conjoint.acbc.estimate`.
 """
 
 from __future__ import annotations
 
 import streamlit as st
 
-from survey_views.state import QUESTIONNAIRE_PAGE_KEY, RESPONDENT_KEY
+from survey_views.state import (
+    ACBC_TOURNAMENT_PAGE_KEY,
+    QUESTIONNAIRE_PAGE_KEY,
+    RESPONDENT_KEY,
+    SURVEY_MODE_KEY,
+)
+
+MODE_RATING = "Part B-1 ratings (OLS)"
+MODE_ACBC = "ACBC Tournament (MNL)"
+MODE_OPTIONS: tuple[str, ...] = (MODE_RATING, MODE_ACBC)
 
 
 def render_intro() -> None:
-    """Render the welcome / instructions page."""
+    """Render the welcome / instructions / mode-toggle page."""
     st.title("Conjoint desirability survey")
-    st.markdown("""
-        Welcome 👋 This short survey is **Part B-1** of a conjoint study on
-        tractor configurations.
+    st.markdown(
+        """
+        Welcome 👋 This survey lets you express preferences over a set of
+        product configurations.
 
-        The ratings page can show the full questionnaire, a guided profile, or a
-        custom attribute subset. For each visible configuration **attribute**
-        you'll see its possible **levels**. Rate **how desirable each level is to
-        you** from **1 (least desirable)** to **5 (most desirable)**. There are
-        no right answers — we're after your personal preference.
+        **Two modes are available:**
 
-        Your ratings are assembled into a `responses.csv` that drives the
-        part-worth / relative-importance estimation
-        (`python -m conjoint.estimate`).
-        """)
+        * **Part B-1 ratings (OLS)** — rate the desirability of each level
+          on a 1..5 scale, one attribute per page. Feeds the existing OLS
+          pipeline (`python -m conjoint.estimate`).
+        * **ACBC Tournament (MNL)** — pick your favourite from a small
+          set of profiles, one task per page. Feeds the multinomial-logit
+          pipeline (`python -m conjoint.acbc.estimate`).
+
+        Either path produces the importance.csv that powers the
+        customer-weighted distance dashboard.
+        """
+    )
 
     st.text_input(
         "Your respondent id",
@@ -37,7 +56,21 @@ def render_intro() -> None:
         help="Any label that identifies this response (defaults to 1 if left blank).",
     )
 
-    page = st.session_state.get(QUESTIONNAIRE_PAGE_KEY)
-    if page is not None and st.button("Start the questionnaire →", type="primary"):
+    st.radio(
+        "Survey mode",
+        options=MODE_OPTIONS,
+        index=0,
+        key=SURVEY_MODE_KEY,
+        horizontal=True,
+    )
+
+    mode = st.session_state.get(SURVEY_MODE_KEY, MODE_RATING)
+    target_key = (
+        QUESTIONNAIRE_PAGE_KEY if mode == MODE_RATING else ACBC_TOURNAMENT_PAGE_KEY
+    )
+    page = st.session_state.get(target_key)
+
+    label = "Start ratings →" if mode == MODE_RATING else "Start Tournament →"
+    if page is not None and st.button(label, type="primary"):
         st.switch_page(page)
-    st.caption("You can also use the **sidebar** to jump to *Part B-1 ratings*.")
+    st.caption("You can also use the **sidebar** to jump between routes.")

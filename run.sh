@@ -112,13 +112,20 @@ weighted_for_dataset() {
     fi
 
     # If a survey exists but importance has not been estimated yet, estimate it.
-    if [ ! -f "$imp" ] && [ -f "$resp" ]; then
-        step "$ds: estimating importance from responses.csv"
+    # We prefer the ACBC long-format file (acbc_responses.csv) when present
+    # — it triggers the MNL path; otherwise fall back to OLS on responses.csv.
+    local acbc_resp="$out/acbc_responses.csv"
+    if [ ! -f "$imp" ] && [ -f "$acbc_resp" ]; then
+        step "$ds: estimating importance from acbc_responses.csv (MNL)"
+        python -m conjoint.acbc.estimate \
+            --responses "$acbc_resp" --out-importance "$imp"
+    elif [ ! -f "$imp" ] && [ -f "$resp" ]; then
+        step "$ds: estimating importance from responses.csv (OLS)"
         python -m conjoint.estimate --responses "$resp" --out-importance "$imp"
     fi
 
     if [ ! -f "$imp" ]; then
-        warn "$ds: no importance.csv (and no responses.csv) — skipping weighted distance"
+        warn "$ds: no importance.csv (and no responses/acbc_responses.csv) — skipping weighted distance"
         return 0
     fi
 
