@@ -111,16 +111,56 @@ python -m streamlit run app.py   # or: ./run.sh app
 The conjoint **questionnaire** is a separate Streamlit app with its own
 `st.navigation` router (`survey.py`), decoupled from the dashboard. It ships
 with a committed `questionnaire_spec.json` (generated from `conjoint_demo.xlsx`),
-so it works out of the box: a **Welcome** route captures the respondent id and a
-**Part B-1 ratings** route renders the questionnaire dynamically. Respondents
-can rate all attributes, answer a guided profile, or choose a custom attribute
-subset. Skipped questions remain blank in the exported `responses.csv`, so the
-file still matches the contract expected by `python -m conjoint.estimate`.
+so it works out of the box. The intro page lets the respondent pick one of two
+modes:
+
+1. **Part B-1 ratings (OLS)** — single-page-per-attribute 1..5 desirability
+   ratings. Downloads `responses.csv` for `python -m conjoint.estimate`.
+2. **ACBC BYO → Screener → Tournament (MNL)** — the full adaptive
+   choice-based conjoint flow:
+   * **BYO** picks a preferred level per attribute (anchor).
+   * **Screener** Yes/No filters a pool of profiles seeded around the
+     anchor.
+   * **Tournament** shows the survivors in choice tasks
+     (single-page-per-task).
+   The **Summary** route stitches the three stages into a long-format
+   `acbc_responses.csv` consumed by `python -m conjoint.acbc.estimate`.
 
 ```bash
 ./run.sh survey                  # or: python -m streamlit run survey.py
 ```
 
-The view code lives in `survey_views/` (intro, ratings, spec source); the spec
-itself can be regenerated for any workbook with
-`python -m conjoint.generate_questionnaire --excel <wb> --out questionnaire_spec.json`.
+The view code lives in `survey_views/` (intro, ratings, ACBC stages,
+shared navigation controller). The spec itself can be regenerated for any
+workbook with `python -m conjoint.generate_questionnaire --excel <wb>
+--out questionnaire_spec.json`.
+
+## ACBC pipeline (MNL + HB)
+
+After collecting `acbc_responses.csv` from the survey app, estimate
+utilities + importance with:
+
+```bash
+# Population MNL only:
+python -m conjoint.acbc.estimate \
+    --responses acbc_responses.csv \
+    --out-importance importance.csv \
+    --out-utilities population_utilities.json
+
+# With Hierarchical-Bayes per-respondent betas:
+python -m conjoint.acbc.estimate \
+    --responses acbc_responses.csv \
+    --hb --hb-iter 4000 --hb-burnin 2000 \
+    --out-importance importance.csv \
+    --out-hb-utilities utilities.csv
+```
+
+The output `importance.csv` matches the OLS schema so the existing
+`compute_distance_matrix.py --mode weighted` consumes it unchanged. The
+dashboard's **Product Removal** panel now adds a before/after pairwise-
+distance histogram and a logit share-of-preference transfer table when a
+`utilities.csv` is present.
+
+For the algorithmic detail (effects coding, level balance, MNL
+log-likelihood, HB Gibbs sampler, share-of-preference, removal impact)
+see [`docs/acbc_design_spec.md`](docs/acbc_design_spec.md).

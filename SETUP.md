@@ -109,18 +109,33 @@ The conjoint pieces (Modules 2–5) are now wired end to end:
   `python -m conjoint.generate_questionnaire`) turns a workbook's `Feature_data`
   sheet into a `questionnaire_spec.json` and an empty `responses.csv` template.
 - **Collect ratings** either by filling the template, or via the standalone
-  **survey app** (`survey.py`, run with `./run.sh survey`): its own
-  `st.navigation` router renders the Part B-1 levels as 1..5 ratings and
-  downloads a contract-compliant `responses.csv`. The view code lives in
-  `survey_views/` and ships with a committed `questionnaire_spec.json`.
-- **Module 3 — estimation** (`python -m conjoint.estimate --responses
-  responses.csv --out-utilities utilities.csv --out-importance importance.csv`)
-  runs OLS and aggregates per-attribute importance.
+  **survey app** (`survey.py`, run with `./run.sh survey`). The intro page
+  picks one of two modes:
+    * **Part B-1 ratings (OLS)** — single-page-per-attribute 1..5 ratings;
+      downloads `responses.csv` for `python -m conjoint.estimate`.
+    * **ACBC BYO → Screener → Tournament (MNL)** — adaptive conjoint flow,
+      single page per question; downloads long-format `acbc_responses.csv`
+      for `python -m conjoint.acbc.estimate`.
+- **Module 3 — estimation** offers two compatible paths:
+    * OLS path — `python -m conjoint.estimate --responses responses.csv
+      --out-utilities utilities.csv --out-importance importance.csv`.
+    * ACBC path — `python -m conjoint.acbc.estimate --responses
+      acbc_responses.csv --out-importance importance.csv`. Add `--hb` for
+      Hierarchical-Bayes per-respondent utilities
+      (`--out-hb-utilities utilities.csv`).
+  Both write the same `importance.csv` schema, so Module 4 is unchanged.
 - **Module 4 — weighted distance** (`compute_distance_matrix.py --mode weighted
   --importance importance.csv --attribute-map attribute_column_map.json`)
   re-scales each attribute by its relative importance.
 - **Module 5 — comparative dashboard** (`app.py`) exposes a
-  **Technical | Customer-weighted** toggle.
+  **Technical | Customer-weighted** toggle and an upgraded **Product
+  Removal** panel that includes a before/after pairwise-distance
+  histogram and a logit share-of-preference transfer table when
+  `utilities.csv` is available.
+
+For the ACBC algorithmic details (effects coding, level balance, MNL
+log-likelihood, HB Gibbs sampler, share-of-preference, removal impact)
+see [`docs/acbc_design_spec.md`](docs/acbc_design_spec.md).
 
 The quickest way to see it: `./run.sh conjoint` builds an authentic bundled demo
 (weighted by the real published N=381 tractor study) into
