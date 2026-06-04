@@ -10,7 +10,10 @@
 - Output numeric features: 43
 
 ## Warnings
-- None.
+- brand: identifier column forced to conjoint_role=identifier (rule 10).
+- product: identifier column forced to conjoint_role=identifier (rule 10).
+- class: identifier column forced to conjoint_role=identifier (rule 10).
+- model: identifier column forced to conjoint_role=identifier (rule 10).
 
 ## Feature Mapping
 

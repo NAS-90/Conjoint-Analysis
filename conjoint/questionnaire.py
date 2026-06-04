@@ -323,7 +323,7 @@ def write_responses_template(spec: QuestionnaireSpec, path: PathLike) -> Path:
 
 
 def responses_from_answers(
-    answers: list[dict[str, int]],
+    answers: list[dict[str, int | None]],
     spec: QuestionnaireSpec,
     *,
     respondent_ids: list[object] | None = None,

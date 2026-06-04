@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+Pro:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1280px; height: 720px;
+    font-family: 'Source Serif Pro', Georgia, serif;
+    color: #1a1a1a;
+    background: #ffffff;
+    padding: 50px 70px;
+    position: relative;
+  }
+  .header-bar {
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 14px;
+    margin-bottom: 22px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+  .meta { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #666; }
+  .subtitle { font-size: 14px; color: #555; font-style: italic; margin-bottom: 16px; }
+  h2 { font-size: 16px; font-weight: 600; margin: 14px 0 8px 0; color: #2c2c2c; }
+
+  .evidence {
+    background: #fafaf5;
+    border: 1px solid #d4d4cc;
+    padding: 14px 18px;
+    margin-bottom: 14px;
+  }
+  .col-table { width: 100%; border-collapse: collapse; font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .col-table th { background: #1a1a1a; color: white; padding: 7px 9px; text-align: left; font-weight: 500; font-family: 'Source Serif Pro', serif; font-size: 12px; }
+  .col-table td { padding: 6px 9px; border-bottom: 1px solid #e8e8e0; vertical-align: top; }
+  .col-table tr:last-child td { border-bottom: none; }
+  .bad-cell { background: #fee2e2; color: #991b1b; font-weight: 600; }
+  .ok-cell { color: #333; }
+
+  .stats-row { display: flex; gap: 16px; margin-bottom: 14px; }
+  .stat-box {
+    flex: 1;
+    background: white;
+    border: 1.5px solid #1a1a1a;
+    padding: 12px 16px;
+  }
+  .stat-num { font-size: 32px; font-weight: 700; color: #b91c1c; line-height: 1; }
+  .stat-label { font-size: 11px; color: #555; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .breakdown { background: #fff; border: 1px solid #d4d4cc; padding: 14px 18px; }
+  .breakdown table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .breakdown td { padding: 5px 8px; }
+  .breakdown td.val { font-family: 'IBM Plex Mono', monospace; }
+  .breakdown td.bar-cell { width: 50%; }
+  .bar {
+    height: 14px;
+    background: #b91c1c;
+    display: inline-block;
+  }
+  .impact {
+    background: #1a1a1a;
+    color: white;
+    padding: 10px 16px;
+    font-size: 13px;
+    margin-top: 14px;
+  }
+  .impact b { color: #fcd34d; }
+
+  .footer {
+    position: absolute;
+    bottom: 20px;
+    left: 70px;
+    right: 70px;
+    display: flex;
+    justify-content: space-between;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    color: #999;
+    border-top: 1px solid #ddd;
+    padding-top: 8px;
+  }
+</style>
+</head>
+<body>
+  <div class="header-bar">
+    <h1>Issue #1 — Smartphone Column Misalignment</h1>
+    <span class="meta">Slide 2 / 5 · Critical</span>
+  </div>
+  <div class="subtitle">Wrong values written into the <code>os</code> column — feature column carries SIM/card content</div>
+
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="stat-num">255</div>
+      <div class="stat-label">rows with contaminated <code>os</code> value</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num">25.0%</div>
+      <div class="stat-label">of all 1,020 smartphone rows affected</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num">17 + 7</div>
+      <div class="stat-label">false "NaN" in os / card columns</div>
+    </div>
+  </div>
+
+  <h2>Evidence — actual rows from <code>Edited</code> sheet</h2>
+  <div class="evidence">
+    <table class="col-table">
+      <thead>
+        <tr>
+          <th>row</th><th>model</th><th>card</th><th>os (expected: Android / iOS)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>8</td><td>Nothing Phone 1</td><td class="ok-cell">Android v12</td><td class="bad-cell">No FM Radio</td></tr>
+        <tr><td>9</td><td>OnePlus Nord 2T 5G</td><td class="ok-cell">Android v12</td><td class="bad-cell">No FM Radio</td></tr>
+        <tr><td>18</td><td>OnePlus 10R 5G</td><td class="ok-cell">Android v12</td><td class="bad-cell">Bluetooth</td></tr>
+        <tr><td>37</td><td>Samsung Galaxy S22 Ultra 5G</td><td class="ok-cell">Android v12</td><td class="bad-cell">Bluetooth</td></tr>
+        <tr><td>58</td><td>Samsung Galaxy S23 Plus</td><td class="ok-cell">Android v13</td><td class="bad-cell">No FM Radio</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Breakdown of <code>os</code> column anomalies</h2>
+  <div class="breakdown">
+    <table>
+      <tr><td>"No FM Radio"</td><td class="val">192</td><td class="bar-cell"><span class="bar" style="width:100%"></span></td></tr>
+      <tr><td>"Bluetooth"</td><td class="val">38</td><td class="bar-cell"><span class="bar" style="width:19.8%"></span></td></tr>
+      <tr><td>"Memory Card Not Supported"</td><td class="val">6</td><td class="bar-cell"><span class="bar" style="width:3.1%"></span></td></tr>
+      <tr><td>"Memory Card Supported, upto N GB"</td><td class="val">5</td><td class="bar-cell"><span class="bar" style="width:2.6%"></span></td></tr>
+      <tr><td>"Browser"</td><td class="val">4</td><td class="bar-cell"><span class="bar" style="width:2.1%"></span></td></tr>
+    </table>
+  </div>
+
+  <div class="impact">
+    <b>Impact:</b> Distance matrix on <code>os</code> will treat "No FM Radio" as a third OS — silently corrupts <b>25%</b> of all pairwise distances. <b>Root cause:</b> upstream CSV parser shifted columns when one cell was empty.
+  </div>
+
+  <div class="footer">
+    <span>Source: smart phone dataset.xlsx → Edited sheet → os column</span>
+    <span>Verified 2026-05-19</span>
+  </div>
+</body>
+</html>

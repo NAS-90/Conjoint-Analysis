@@ -1,0 +1,191 @@
+{
+  "version": "0.1",
+  "scale": {
+    "min": 1,
+    "max": 5
+  },
+  "attributes": [
+    {
+      "feature_name": "engine",
+      "description": "Tractor engine configuration",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'engine'?",
+      "levels": [
+        {
+          "code": "basic",
+          "label": "basic engine"
+        },
+        {
+          "code": "premium",
+          "label": "premium engine"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "injection",
+      "description": "Tractor injection configuration",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'injection'?",
+      "levels": [
+        {
+          "code": "mechanical",
+          "label": "mechanical"
+        },
+        {
+          "code": "electrical",
+          "label": "electrical"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "transmission",
+      "description": "Tractor transmission configuration",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'transmission'?",
+      "levels": [
+        {
+          "code": "not_synchronized",
+          "label": "not synchronized"
+        },
+        {
+          "code": "synchronized",
+          "label": "synchronized"
+        },
+        {
+          "code": "powershift",
+          "label": "powershift"
+        },
+        {
+          "code": "cvt",
+          "label": "CVT"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "shuttle",
+      "description": "Tractor shuttle configuration",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'shuttle'?",
+      "levels": [
+        {
+          "code": "no_shuttle",
+          "label": "no shuttle"
+        },
+        {
+          "code": "mechanical_shuttle",
+          "label": "mechanical shuttle"
+        },
+        {
+          "code": "hydraulic_shuttle",
+          "label": "hydraulic shuttle"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "gears",
+      "description": "Tractor gears configuration",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'gears'?",
+      "levels": [
+        {
+          "code": "g8_9",
+          "label": "8-9"
+        },
+        {
+          "code": "g12",
+          "label": "12"
+        },
+        {
+          "code": "g16_18",
+          "label": "16-18"
+        },
+        {
+          "code": "g24_32",
+          "label": "24-32"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "cabin",
+      "description": "Tractor cabin configuration",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'cabin'?",
+      "levels": [
+        {
+          "code": "basic",
+          "label": "basic quality"
+        },
+        {
+          "code": "high",
+          "label": "high quality"
+        },
+        {
+          "code": "premium",
+          "label": "premium quality"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "tank",
+      "description": "Tractor tank configuration",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'tank'?",
+      "levels": [
+        {
+          "code": "h8",
+          "label": "capacity for 8 hours of work"
+        },
+        {
+          "code": "h10",
+          "label": "capacity for 10 hours of work"
+        },
+        {
+          "code": "h12",
+          "label": "capacity for 12 hours of work"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    }
+  ]
+}

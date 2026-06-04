@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Distance-Analysis — P1 Foundation Update</title>
+
+<!-- Swiss Modern type pairing: Archivo (display) + Nunito (body) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+/* ===========================================
+   VIEWPORT FITTING: MANDATORY BASE STYLES
+   =========================================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; overflow-x: hidden; }
+html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+
+.slide {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.slide-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-height: 100%;
+    overflow: hidden;
+    padding: var(--slide-padding);
+}
+
+:root {
+    --title-size: clamp(1.5rem, 5vw, 4rem);
+    --h2-size: clamp(1.25rem, 3.5vw, 2.5rem);
+    --h3-size: clamp(1rem, 2.5vw, 1.75rem);
+    --body-size: clamp(0.8rem, 1.5vw, 1.08rem);
+    --small-size: clamp(0.66rem, 1vw, 0.85rem);
+
+    --slide-padding: clamp(1.25rem, 5vw, 5.5rem);
+    --content-gap: clamp(0.5rem, 2vw, 2rem);
+    --element-gap: clamp(0.25rem, 1vw, 1rem);
+
+    /* Swiss Modern palette: white field, ink black, signal red */
+    --bg: #f4f4f1;
+    --paper: #ffffff;
+    --ink: #111110;
+    --muted: #6c6c68;
+    --red: #ec1c24;
+    --hairline: #d8d8d2;
+    --line: #111110;
+}
+
+body {
+    font-family: 'Nunito', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: var(--body-size);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Faint Swiss column grid drawn across the whole deck */
+.grid-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: linear-gradient(to right, var(--hairline) 1px, transparent 1px);
+    background-size: calc(100vw / 12) 100%;
+    opacity: 0.5;
+}
+
+h1, h2, h3, .display, .kicker, .section-num, .stat-num, th { font-family: 'Archivo', system-ui, sans-serif; }
+
+/* ---------- Shared building blocks ---------- */
+.kicker {
+    font-size: var(--small-size);
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--red);
+    display: flex;
+    align-items: center;
+    gap: 0.8em;
+    flex-wrap: wrap;
+}
+.kicker::before { content: ""; width: clamp(1.4rem, 4vw, 3.2rem); height: 2px; background: var(--red); display: inline-block; }
+
+.eyebrow { font-size: var(--small-size); font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+
+h1.display { font-weight: 900; font-size: clamp(2.2rem, 8vw, 7rem); line-height: 0.94; letter-spacing: -0.02em; text-transform: uppercase; }
+h2 { font-weight: 800; font-size: var(--h2-size); line-height: 1.04; letter-spacing: -0.01em; text-transform: uppercase; }
+
+.section-num { font-weight: 900; font-size: clamp(3rem, 13vw, 10rem); line-height: 0.8; color: transparent; -webkit-text-stroke: 2px var(--ink); letter-spacing: -0.03em; }
+.section-num.solid { color: var(--red); -webkit-text-stroke: 0; }
+
+p.lede { font-size: clamp(1rem, 2.2vw, 1.55rem); line-height: 1.42; }
+.muted { color: var(--muted); }
+.red { color: var(--red); }
+strong { font-weight: 800; }
+code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 0.92em; background: rgba(0,0,0,0.06); padding: 0.05em 0.35em; }
+
+/* Reveal-on-enter animation (restrained, staggered) */
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2,0.7,0.2,1); transition-delay: calc(var(--i, 0) * 85ms); }
+.slide.is-active .reveal { opacity: 1; transform: none; }
+
+/* ---------- Cards / lists ---------- */
+.card { background: var(--paper); border: 1.5px solid var(--ink); padding: clamp(0.8rem, 1.8vw, 1.5rem); }
+.card .tag { font-family: 'Archivo'; font-weight: 700; font-size: var(--small-size); text-transform: uppercase; letter-spacing: 0.06em; }
+
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(0.6rem, 1.5vw, 1.2rem); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1rem, 3vw, 3rem); align-items: center; }
+
+.feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(0.6rem, 1.4vw, 1.1rem); }
+.feature { background: var(--paper); border-top: 3px solid var(--ink); padding: clamp(0.7rem, 1.5vw, 1.15rem); }
+.feature h3 { font-size: var(--h3-size); font-weight: 800; line-height: 1.05; margin-bottom: 0.3em; }
+.feature .num { font-family:'Archivo'; font-weight:900; color: var(--red); font-size: var(--small-size); letter-spacing:0.1em; }
+.feature p { font-size: var(--small-size); color: var(--muted); line-height: 1.32; }
+
+ul.steps, ul.bullets { list-style: none; display: flex; flex-direction: column; gap: clamp(0.5rem, 1.5vh, 1.1rem); }
+ul.bullets li { display: flex; gap: 0.7em; align-items: baseline; font-size: var(--body-size); }
+ul.bullets li::before { content: "—"; color: var(--red); font-weight: 800; flex-shrink: 0; }
+
+/* numbered "how it works" steps */
+ul.steps li { display: flex; gap: clamp(0.7rem,1.6vw,1.3rem); align-items: flex-start; }
+ul.steps .n { font-family:'Archivo'; font-weight:900; color: var(--red); font-size: clamp(1.3rem,3vw,2.2rem); line-height:1; flex-shrink:0; min-width: 1.6ch; }
+ul.steps .t { font-size: clamp(0.85rem,1.6vw,1.18rem); }
+ul.steps .t b { font-weight:800; }
+
+/* ---------- Code blocks ---------- */
+pre { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; background: var(--ink); color: #f4f4f1; padding: clamp(0.9rem, 2vw, 1.5rem); font-size: clamp(0.64rem, 1.15vw, 0.95rem); line-height: 1.7; overflow: hidden; border-left: 4px solid var(--red); }
+pre .c { color: #8a8a86; } pre .r { color: #ff6b63; } pre .g { color: #7CFFB0; } pre .k { color: #ffd24a; }
+
+/* ---------- LOC compare bars ---------- */
+.bars { display:flex; flex-direction:column; gap: clamp(0.55rem,1.5vh,1.1rem); }
+.loc-row { display: grid; grid-template-columns: minmax(7ch, 12ch) 1fr; gap: clamp(0.6rem,1.5vw,1.4rem); align-items: center; }
+.loc-row .name { font-family:'JetBrains Mono', monospace; font-size: var(--small-size); line-height:1.2; }
+.bar-pair { display:flex; flex-direction:column; gap: 4px; }
+.bar { height: clamp(0.75rem, 1.7vh, 1.25rem); display:flex; align-items:center; padding:0 0.5em; font-family:'Archivo'; font-weight:700; font-size: var(--small-size); color:#fff; white-space:nowrap; }
+.bar.before { background: var(--red); }
+.bar.after { background: var(--ink); }
+.bar.tiny { color: var(--ink); background: transparent; padding-left:0; }
+.bar.tiny b { background: var(--ink); color:#fff; padding: 0 0.5em; height:100%; display:flex; align-items:center; }
+
+/* ---------- Phase strip ---------- */
+.phases { display:flex; border:1.5px solid var(--ink); }
+.phase { flex:1; padding: clamp(0.5rem,1.4vw,1rem) clamp(0.4rem,1vw,0.8rem); border-right:1.5px solid var(--ink); }
+.phase:last-child { border-right:0; }
+.phase.active { background: var(--red); color:#fff; }
+.phase .p { font-family:'Archivo'; font-weight:900; font-size: var(--small-size); letter-spacing:0.05em; }
+.phase .d { font-size: clamp(0.6rem,0.95vw,0.78rem); opacity:0.8; }
+
+/* ---------- Comparison / scorecard table ---------- */
+.cmp { width: 100%; border-collapse: collapse; font-size: clamp(0.72rem, 1.4vw, 1.02rem); }
+.cmp th, .cmp td { text-align: left; padding: clamp(0.42rem, 1.1vh, 0.8rem) clamp(0.5rem,1.2vw,1rem); border-bottom: 1.5px solid var(--hairline); vertical-align: top; }
+.cmp thead th { border-bottom: 2.5px solid var(--ink); text-transform: uppercase; letter-spacing: 0.05em; font-size: var(--small-size); }
+.cmp thead th.before { color: var(--red); }
+.cmp td.dim { color: var(--ink); font-weight: 700; }
+.cmp td.before { color: var(--muted); }
+.cmp td.after { font-weight: 700; }
+.cmp td.status { font-family:'Archivo'; font-weight:900; font-size: 1.1em; }
+.done { color: var(--red); }
+.partial { color: var(--muted); }
+.cmp tr:last-child td { border-bottom: none; }
+
+/* ---------- Stats ---------- */
+.stat-num { font-weight: 900; font-size: clamp(2rem, 7vw, 5.5rem); line-height: 0.85; color: var(--red); letter-spacing: -0.02em; }
+.stat-label { font-size: var(--small-size); color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; font-weight:700; }
+
+/* ---------- Chrome ---------- */
+.progress { position: fixed; top: 0; left: 0; height: 4px; background: var(--red); width: 0; z-index: 50; transition: width 0.3s ease; }
+.counter { position: fixed; bottom: clamp(0.8rem,2.5vh,1.8rem); right: clamp(0.9rem,3vw,2.5rem); z-index: 40; font-family:'Archivo'; font-weight: 800; font-size: var(--small-size); letter-spacing: 0.1em; }
+.counter .cur { color: var(--red); }
+.nav-dots { position: fixed; top: 50%; right: clamp(0.5rem,1.5vw,1.2rem); transform: translateY(-50%); z-index: 40; display:flex; flex-direction:column; gap: 0.55rem; }
+.nav-dots button { width: 8px; height: 8px; border:1.5px solid var(--ink); background: transparent; padding:0; cursor:pointer; transition: all 0.25s ease; }
+.nav-dots button.active { background: var(--red); border-color: var(--red); transform: scale(1.35); }
+.keyboard-hint { position: fixed; bottom: clamp(0.8rem,2.5vh,1.8rem); left: clamp(0.9rem,3vw,2.5rem); z-index: 40; font-size: var(--small-size); color: var(--muted); letter-spacing: 0.04em; }
+.brand-tag { position: fixed; top: clamp(0.8rem,2.5vh,1.6rem); left: clamp(0.9rem,3vw,2.5rem); z-index:40; font-family:'Archivo'; font-weight:800; font-size: var(--small-size); letter-spacing:0.12em; text-transform:uppercase; }
+.brand-tag .red { color: var(--red); }
+.footer-meta { position:absolute; bottom: var(--slide-padding); left: var(--slide-padding); right: var(--slide-padding); display:flex; justify-content:space-between; font-size: var(--small-size); color: var(--muted); letter-spacing:0.05em; border-top:1.5px solid var(--ink); padding-top: 0.6rem; }
+
+/* ---------- Responsive ---------- */
+@media (max-height: 700px) { :root { --slide-padding: clamp(0.9rem, 3.5vw, 2.5rem); --content-gap: clamp(0.4rem,1.5vw,1rem); } }
+@media (max-height: 600px) { .nav-dots, .keyboard-hint, .grid-overlay { display: none; } }
+@media (max-width: 760px) {
+    .grid3, .feature-grid { grid-template-columns: 1fr; }
+    .grid2 { grid-template-columns: 1fr; gap: 1rem; }
+    .phases { flex-direction: column; }
+    .phase { border-right:0; border-bottom:1.5px solid var(--ink); }
+    .phase:last-child { border-bottom:0; }
+    .nav-dots { display: none; }
+    .grid-overlay { background-size: calc(100vw / 4) 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.2s !important; }
+    html { scroll-behavior: auto; }
+    .reveal { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="grid-overlay" aria-hidden="true"></div>
+<div class="progress" id="progress"></div>
+<div class="brand-tag">DISTANCE<span class="red">·</span>ANALYSIS</div>
+<nav class="nav-dots" id="navDots" aria-label="Slide navigation"></nav>
+<div class="counter"><span class="cur" id="cur">01</span> / <span id="total">12</span></div>
+<div class="keyboard-hint">↑ ↓ · scroll · swipe</div>
+
+<main>
+
+<!-- ============ 1 · TITLE ============ -->
+<section class="slide" id="s1">
+  <div class="slide-content">
+    <div class="kicker reveal" style="--i:0">Phase 1 · Foundation · Progress Update</div>
+    <h1 class="display reveal" style="--i:1; margin:clamp(0.6rem,2vh,1.4rem) 0;">Making the tool<br>usable — by<br><span class="red">everyone</span></h1>
+    <p class="lede reveal" style="--i:2; max-width:40ch;">Before we add customer preferences, the foundation has to be solid: <strong>one clean data engine</strong>, and a <strong>one-click setup the whole team can run.</strong></p>
+    <div class="footer-meta reveal" style="--i:3">
+      <span>Distance-Analysis · TUM Project Study</span>
+      <span>Yongheng · May 2026</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 · WHERE THIS FITS ============ -->
+<section class="slide" id="s2">
+  <div class="slide-content">
+    <div class="kicker reveal" style="--i:0">The Big Picture · Where this fits</div>
+    <h2 class="reveal" style="--i:1; margin:0.3em 0 0.5em; max-width:24ch;">First the foundation, then the customer view</h2>
+    <p class="reveal muted" style="--i:2; max-width:56ch; font-size:clamp(0.88rem,1.7vw,1.2rem);">The tool tells you how alike two products are — today using <strong>only their specs</strong>. Our 3-month goal is to also weigh in <strong>what customers actually care about</strong>. That work is split into 4 phases:</p>
+    <div class="phases reveal" style="--i:3; margin:clamp(0.9rem,3vh,2rem) 0;">
+      <div class="phase active"><div class="p">P1 · NOW</div><div class="d">Foundation</div></div>
+      <div class="phase"><div class="p">P2</div><div class="d">Core modules</div></div>
+      <div class="phase"><div class="p">P3</div><div class="d">Integration</div></div>
+      <div class="phase"><div class="p">P4</div><div class="d">Delivery</div></div>
+    </div>
+    <p class="reveal" style="--i:4; font-size:clamp(0.88rem,1.7vw,1.2rem); max-width:60ch;"><strong>This update covers my two P1 jobs:</strong> <span class="red">get the tool running for everyone</span>, and lay the groundwork for <span class="red">Module 1 — the universal data engine.</span></p>
+  </div>
+</section>
+
+<!-- ============ 3 · HOW IT WORKS (mental model) ============ -->
+<section class="slide" id="s3">
+  <div class="slide-content">
+    <div class="kicker reveal" style="--i:0">First, the basics · 60 seconds</div>
+    <h2 class="reveal" style="--i:1; margin:0.3em 0 clamp(0.7rem,2.5vh,1.5rem); max-width:24ch;">From a messy spreadsheet to "which products are alike"</h2>
+    <ul class="steps">
+      <li class="reveal" style="--i:2"><span class="n">1</span><span class="t"><b>A messy Excel goes in.</b> Prices like "₹54,999", ranges like "61–70", Yes/No text — all mixed together.</span></li>
+      <li class="reveal" style="--i:3"><span class="n">2</span><span class="t"><b>A "data tidier" cleans it up</b> into plain numbers a computer can compare.</span></li>
+      <li class="reveal" style="--i:4"><span class="n">3</span><span class="t"><b>Math measures the gaps.</b> Products with small gaps are alike — likely competitors.</span></li>
+    </ul>
+    <p class="reveal red" style="--i:5; margin-top:clamp(0.9rem,3vh,1.8rem); font-weight:800; font-size:clamp(0.9rem,1.7vw,1.25rem);">Everything depends on step 2. That's the part this update rebuilt.</p>
+  </div>
+</section>
+
+<!-- ============ 4 · PROBLEM 01 ============ -->
+<section class="slide" id="s4">
+  <div class="slide-content">
+    <div style="display:flex; align-items:flex-start; gap:clamp(0.8rem,3vw,2.5rem);">
+      <div class="section-num reveal" style="--i:0">01</div>
+      <div style="flex:1;">
+        <div class="kicker reveal" style="--i:1">The Problem · Repeated work</div>
+        <h2 class="reveal" style="--i:2; margin:0.3em 0 0.5em;">The same work, written three times</h2>
+      </div>
+    </div>
+    <p class="reveal" style="--i:3; max-width:58ch; font-size:clamp(0.88rem,1.7vw,1.2rem); margin-bottom:clamp(0.7rem,2vh,1.3rem);">Three teammates had each written their own near-identical "data tidier". Three files doing basically the same job:</p>
+    <div class="grid3">
+      <div class="card reveal" style="--i:4"><div class="tag">tidier #1</div><div class="red" style="font-family:'Archivo';font-weight:900;font-size:clamp(1.2rem,3vw,1.7rem);">~90 lines</div><p class="muted" style="font-size:var(--small-size)">the generic one</p></div>
+      <div class="card reveal" style="--i:5"><div class="tag">tidier #2</div><div class="red" style="font-family:'Archivo';font-weight:900;font-size:clamp(1.2rem,3vw,1.7rem);">~115 lines</div><p class="muted" style="font-size:var(--small-size)">a copy, for phones</p></div>
+      <div class="card reveal" style="--i:6"><div class="tag">tidier #3</div><div class="red" style="font-family:'Archivo';font-weight:900;font-size:clamp(1.2rem,3vw,1.7rem);">~99 lines</div><p class="muted" style="font-size:var(--small-size)">another copy</p></div>
+    </div>
+    <p class="reveal" style="--i:7; margin-top:clamp(0.8rem,2.5vh,1.5rem); font-size:clamp(0.88rem,1.7vw,1.2rem);">Want to change one rule? You had to <strong class="red">fix it in three places</strong> — and hope you didn't miss one.</p>
+  </div>
+</section>
+
+<!-- ============ 5 · PROBLEM 02 ============ -->
+<section class="slide" id="s5">
+  <div class="slide-content">
+    <div style="display:flex; align-items:flex-start; gap:clamp(0.8rem,3vw,2.5rem);">
+      <div class="section-num reveal" style="--i:0">02</div>
+      <div style="flex:1;">
+        <div class="kicker reveal" style="--i:1">The Problem · Too rigid</div>
+        <h2 class="reveal" style="--i:2; margin:0.3em 0 0.5em;">The rules were welded into the code</h2>
+      </div>
+    </div>
+    <p class="reveal" style="--i:3; max-width:60ch; font-size:clamp(0.88rem,1.7vw,1.2rem); margin-bottom:clamp(0.7rem,2vh,1.3rem);">Picture a machine that only accepts <strong>one exact form</strong>. Feed it tractors — fine. Feed it phones — it jams, because the product name now sits in a different column.</p>
+    <ul class="bullets" style="max-width:60ch;">
+      <li class="reveal" style="--i:4">Type <code>Numeric</code> with a capital N → works. Lowercase <code>numeric</code> → the whole column was <strong class="red">silently dropped.</strong></li>
+      <li class="reveal" style="--i:5">A new product category meant <strong class="red">editing the program</strong> — i.e. waiting for a coder.</li>
+    </ul>
+    <p class="reveal" style="--i:6; margin-top:clamp(0.8rem,2.5vh,1.5rem); font-weight:800; font-size:clamp(0.88rem,1.7vw,1.2rem);">That directly breaks the project's #1 promise: <span class="red">"works for any product."</span></p>
+  </div>
+</section>
+
+<!-- ============ 6 · PROBLEM 03 ============ -->
+<section class="slide" id="s6">
+  <div class="slide-content">
+    <div style="display:flex; align-items:flex-start; gap:clamp(0.8rem,3vw,2.5rem);">
+      <div class="section-num reveal" style="--i:0">03</div>
+      <div style="flex:1;">
+        <div class="kicker reveal" style="--i:1">The Problem · Nobody else could run it</div>
+        <h2 class="reveal" style="--i:2; margin:0.3em 0 0.5em;">One chef, no recipe</h2>
+      </div>
+    </div>
+    <p class="reveal" style="--i:3; max-width:60ch; font-size:clamp(0.88rem,1.7vw,1.2rem); margin-bottom:clamp(0.7rem,2vh,1.3rem);">The "dish" only worked when the original cook made it — no ingredient list, no recipe card. A new teammate was stuck at step zero.</p>
+    <ul class="bullets" style="max-width:60ch;">
+      <li class="reveal" style="--i:4">No list of what to install → "but it works on my machine"</li>
+      <li class="reveal" style="--i:5">No setup guide → onboarding happened by word of mouth</li>
+      <li class="reveal" style="--i:6">Result files piled up loose and got overwritten every run</li>
+    </ul>
+    <p class="reveal" style="--i:7; margin-top:clamp(0.8rem,2.5vh,1.5rem); font-weight:800; font-size:clamp(0.88rem,1.7vw,1.2rem);">This <span class="red">is</span> the P1 task "get the tool running for everyone" — and it wasn't met yet.</p>
+  </div>
+</section>
+
+<!-- ============ 7 · THE SHIFT ============ -->
+<section class="slide" id="s7" style="background:var(--ink); color:var(--bg);">
+  <div class="slide-content">
+    <div class="kicker reveal" style="--i:0; color:#fff;">The fix, in one idea</div>
+    <h1 class="display reveal" style="--i:1; margin:clamp(0.6rem,2vh,1.4rem) 0; color:#fff;">Let the program<br><span style="color:var(--red)">read a form —</span><br>not be rewritten.</h1>
+    <p class="reveal" style="--i:2; max-width:46ch; font-size:clamp(0.95rem,2vw,1.4rem); color:#cfcfca;">You describe each column once, right in the spreadsheet. The code reads those notes and <strong style="color:#fff">adapts itself to any product</strong> — no programmer needed.</p>
+  </div>
+</section>
+
+<!-- ============ 8 · IMPROVEMENT 01 ============ -->
+<section class="slide" id="s8">
+  <div class="slide-content">
+    <div style="display:flex; align-items:flex-start; gap:clamp(0.8rem,3vw,2.5rem);">
+      <div class="section-num solid reveal" style="--i:0">01</div>
+      <div style="flex:1;">
+        <div class="kicker reveal" style="--i:1">Improvement · One engine &nbsp;→&nbsp; Module 1</div>
+        <h2 class="reveal" style="--i:2; margin:0.3em 0 0.4em;">Three tidiers became one</h2>
+      </div>
+    </div>
+    <div class="bars" style="margin-top:clamp(0.6rem,2vh,1.2rem);">
+      <div class="loc-row reveal" style="--i:3">
+        <span class="name">the engine</span>
+        <div class="bar-pair"><div class="bar after" style="width:100%;">ONE shared "data tidier" — everyone uses this</div></div>
+      </div>
+      <div class="loc-row reveal" style="--i:4">
+        <span class="name">old copy #1</span>
+        <div class="bar-pair"><div class="bar before" style="width:62%;">115 lines</div><div class="bar tiny"><b>now 12</b>&nbsp; just points to the engine</div></div>
+      </div>
+      <div class="loc-row reveal" style="--i:5">
+        <span class="name">old copy #2</span>
+        <div class="bar-pair"><div class="bar before" style="width:54%;">99 lines</div><div class="bar tiny"><b>now 11</b>&nbsp; just points to the engine</div></div>
+      </div>
+    </div>
+    <p class="reveal" style="--i:6; margin-top:clamp(0.8rem,2.5vh,1.5rem); font-size:clamp(0.88rem,1.7vw,1.2rem);"><strong>Fix it once, everyone benefits.</strong> This is the start of <span class="red">Module 1 (Universal Preprocessor)</span> from the Exposé.</p>
+  </div>
+</section>
+
+<!-- ============ 9 · IMPROVEMENT 02 ============ -->
+<section class="slide" id="s9">
+  <div class="slide-content">
+    <div style="display:flex; align-items:flex-start; gap:clamp(0.8rem,3vw,2.5rem);">
+      <div class="section-num solid reveal" style="--i:0">02</div>
+      <div style="flex:1;">
+        <div class="kicker reveal" style="--i:1">Improvement · Configurable &amp; forgiving</div>
+        <h2 class="reveal" style="--i:2; margin:0.3em 0 0.4em;">It now works for any product</h2>
+      </div>
+    </div>
+    <div class="feature-grid" style="margin-top:clamp(0.6rem,2vh,1.3rem);">
+      <div class="feature reveal" style="--i:3"><div class="num">01</div><h3>Fill a form, not the code</h3><p>You note each column's kind in Excel; the engine follows it.</p></div>
+      <div class="feature reveal" style="--i:4"><div class="num">02</div><h3>Forgiving of typos</h3><p>"Numeric / number / continuous" all understood. No more silently dropped columns.</p></div>
+      <div class="feature reveal" style="--i:5"><div class="num">03</div><h3>Finds the product name</h3><p>Tractors, phones, anything — it locates the label column by itself.</p></div>
+      <div class="feature reveal" style="--i:6"><div class="num">04</div><h3>Reads human messiness</h3><p>"₹54,999" → a number · "61–70" → 65.5 · "Yes" → 1.</p></div>
+      <div class="feature reveal" style="--i:7"><div class="num">05</div><h3>Fixes small mistakes</h3><p>Fills blanks, removes duplicated header rows automatically.</p></div>
+      <div class="feature reveal" style="--i:8"><div class="num">06</div><h3>Writes a receipt</h3><p>A plain report of exactly what it did to every column.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10 · IMPROVEMENT 03 ============ -->
+<section class="slide" id="s10">
+  <div class="slide-content">
+    <div style="display:flex; align-items:flex-start; gap:clamp(0.8rem,3vw,2.5rem);">
+      <div class="section-num solid reveal" style="--i:0">03</div>
+      <div style="flex:1;">
+        <div class="kicker reveal" style="--i:1">Improvement · Anyone can run it &nbsp;→&nbsp; P1 goal met</div>
+        <h2 class="reveal" style="--i:2; margin:0.3em 0 0.4em;">One command, and you're running</h2>
+      </div>
+    </div>
+    <pre class="reveal" style="--i:3; margin-top:clamp(0.5rem,2vh,1rem);"><span class="c"># fresh laptop → working dashboard, no manual steps</span>
+$ ./run.sh
+  <span class="g">✓</span> installs everything it needs
+  <span class="g">✓</span> rebuilds all three datasets' results
+  <span class="g">✓</span> opens the dashboard in the browser</pre>
+    <div class="grid2" style="margin-top:clamp(0.7rem,2vh,1.4rem);">
+      <ul class="bullets reveal" style="--i:4">
+        <li><strong>Ingredient list</strong> — exact versions to install</li>
+        <li><strong>Recipe card</strong> — a step-by-step setup guide</li>
+      </ul>
+      <ul class="bullets reveal" style="--i:5">
+        <li><strong>Tidy folders</strong> — results sorted per dataset</li>
+        <li><strong>Ready template</strong> — fill-in Excel with dropdowns</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11 · P1 SCORECARD ============ -->
+<section class="slide" id="s11">
+  <div class="slide-content">
+    <div class="kicker reveal" style="--i:0">Against the Exposé</div>
+    <h2 class="reveal" style="--i:1; margin:0.3em 0 clamp(0.6rem,2vh,1.2rem);">Phase 1 — asked vs. done</h2>
+    <table class="cmp reveal" style="--i:2">
+      <thead><tr><th>Phase 1 task (from the Exposé)</th><th style="text-align:center; width:4ch;">Status</th><th>What it delivered</th></tr></thead>
+      <tbody>
+        <tr><td class="dim">Run the pipeline on all 3 datasets</td><td class="status done" style="text-align:center;">✓</td><td class="after">Results + check reports for tractors, phones &amp; uploads</td></tr>
+        <tr><td class="dim">Get the tool running for everyone</td><td class="status done" style="text-align:center;">✓</td><td class="after">One-click <code>./run.sh</code> + setup guide</td></tr>
+        <tr><td class="dim">Define one unified data schema</td><td class="status done" style="text-align:center;">✓</td><td class="after">Fill-in template with dropdown validation</td></tr>
+        <tr><td class="dim">Module 1 — merge the tidiers <span class="muted">(P2)</span></td><td class="status partial" style="text-align:center;">◐</td><td class="after">Started early — one universal engine</td></tr>
+      </tbody>
+    </table>
+    <p class="reveal muted" style="--i:3; margin-top:clamp(0.7rem,2vh,1.3rem); font-size:var(--small-size);"><span class="done" style="font-weight:800;">✓</span> done &nbsp;·&nbsp; <span style="font-weight:800;">◐</span> started ahead of schedule</p>
+  </div>
+</section>
+
+<!-- ============ 12 · SUMMARY & NEXT ============ -->
+<section class="slide" id="s12" style="background:var(--ink); color:var(--bg);">
+  <div class="slide-content">
+    <div class="kicker reveal" style="--i:0; color:#fff;">Summary &amp; Next</div>
+    <h2 class="reveal" style="--i:1; margin:0.3em 0 clamp(0.7rem,2.5vh,1.4rem); color:#fff; max-width:22ch;">The foundation is solid</h2>
+    <div class="grid2" style="align-items:flex-start;">
+      <div class="reveal" style="--i:2">
+        <div class="eyebrow" style="color:var(--red);">In plain terms</div>
+        <ul class="bullets" style="margin-top:0.6em;">
+          <li style="color:#e7e7e3;">One tidy engine instead of three</li>
+          <li style="color:#e7e7e3;">Works on any product, set up in Excel</li>
+          <li style="color:#e7e7e3;">Anyone runs it with one command</li>
+        </ul>
+      </div>
+      <div class="reveal" style="--i:3">
+        <div class="eyebrow" style="color:var(--red);">Next — Phase 2</div>
+        <ul class="bullets" style="margin-top:0.6em;">
+          <li style="color:#e7e7e3;">Formally land Module 1</li>
+          <li style="color:#e7e7e3;">Module 2 — auto-build the questionnaire</li>
+          <li style="color:#e7e7e3;">Module 3 — the customer-importance math</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-meta reveal" style="--i:4; position:static; margin-top:clamp(1.2rem,4vh,2.5rem); border-color:#444;">
+      <span style="color:#9a9a96;">Distance-Analysis · P1 Foundation Update</span>
+      <span style="color:#9a9a96;">Thank you</span>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+/* ===========================================
+   Presentation controller
+   keyboard · wheel · touch · dots · progress
+   =========================================== */
+(function () {
+    "use strict";
+
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const progress = document.getElementById('progress');
+    const curEl = document.getElementById('cur');
+    const totalEl = document.getElementById('total');
+    const dotsWrap = document.getElementById('navDots');
+    const pad2 = (n) => String(n + 1).padStart(2, '0');
+
+    let index = 0;
+    let locked = false;
+
+    totalEl.textContent = slides.length;
+
+    // Build nav dots
+    slides.forEach((s, i) => {
+        const b = document.createElement('button');
+        b.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+        b.addEventListener('click', () => goTo(i));
+        dotsWrap.appendChild(b);
+    });
+    const dots = Array.from(dotsWrap.children);
+
+    function setActive(i) {
+        index = Math.max(0, Math.min(slides.length - 1, i));
+        slides.forEach((s, k) => s.classList.toggle('is-active', k === index));
+        dots.forEach((d, k) => d.classList.toggle('active', k === index));
+        curEl.textContent = pad2(index);
+        progress.style.width = (index / (slides.length - 1) * 100) + '%';
+    }
+
+    function goTo(i) {
+        if (i < 0 || i >= slides.length) return;
+        slides[i].scrollIntoView({ behavior: 'smooth' });
+        setActive(i);
+    }
+
+    // Observe which slide is centered → drives active state + reveal
+    const io = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+            if (e.isIntersecting && e.intersectionRatio >= 0.5) {
+                setActive(slides.indexOf(e.target));
+            }
+        });
+    }, { threshold: [0.5, 0.75] });
+    slides.forEach((s) => io.observe(s));
+
+    // Keyboard
+    window.addEventListener('keydown', (e) => {
+        switch (e.key) {
+            case 'ArrowDown': case 'ArrowRight': case 'PageDown': case ' ':
+                e.preventDefault(); goTo(index + 1); break;
+            case 'ArrowUp': case 'ArrowLeft': case 'PageUp':
+                e.preventDefault(); goTo(index - 1); break;
+            case 'Home': e.preventDefault(); goTo(0); break;
+            case 'End': e.preventDefault(); goTo(slides.length - 1); break;
+        }
+    });
+
+    // Wheel (throttled so one gesture = one slide)
+    window.addEventListener('wheel', (e) => {
+        if (locked) return;
+        if (Math.abs(e.deltaY) < 18) return;
+        locked = true;
+        goTo(index + (e.deltaY > 0 ? 1 : -1));
+        setTimeout(() => { locked = false; }, 650);
+    }, { passive: true });
+
+    // Touch / swipe
+    let touchY = null;
+    window.addEventListener('touchstart', (e) => { touchY = e.touches[0].clientY; }, { passive: true });
+    window.addEventListener('touchend', (e) => {
+        if (touchY === null) return;
+        const dy = touchY - e.changedTouches[0].clientY;
+        if (Math.abs(dy) > 45) goTo(index + (dy > 0 ? 1 : -1));
+        touchY = null;
+    }, { passive: true });
+
+    // Always open on the title slide, ignoring browser scroll restoration
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    window.scrollTo(0, 0);
+    setActive(0);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+Pro:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1280px; height: 720px;
+    font-family: 'Source Serif Pro', Georgia, serif;
+    color: #1a1a1a;
+    background: #ffffff;
+    padding: 50px 70px;
+    position: relative;
+  }
+  .header-bar {
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 14px;
+    margin-bottom: 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.5px; }
+  .meta { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #666; }
+  h2 { font-size: 18px; font-weight: 600; margin: 18px 0 12px 0; color: #2c2c2c; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 9px 12px; background: #f4f4f0; border-bottom: 1.5px solid #1a1a1a; font-weight: 600; }
+  td { padding: 8px 12px; border-bottom: 1px solid #e4e4e0; vertical-align: top; }
+  td.label { font-weight: 600; color: #444; width: 24%; }
+  td.cell { font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  .good { color: #0a6e2e; }
+  .bad { color: #b91c1c; font-weight: 600; }
+  .warn { color: #c2410c; }
+  .findings {
+    margin-top: 22px;
+    background: #fafaf5;
+    border-left: 3px solid #1a1a1a;
+    padding: 16px 22px;
+  }
+  .findings h2 { margin-top: 0; }
+  .findings ol { margin-left: 18px; font-size: 13.5px; line-height: 1.85; }
+  .findings ol li b { color: #b91c1c; }
+  .footer {
+    position: absolute;
+    bottom: 22px;
+    left: 70px;
+    right: 70px;
+    display: flex;
+    justify-content: space-between;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    color: #999;
+    border-top: 1px solid #ddd;
+    padding-top: 10px;
+  }
+</style>
+</head>
+<body>
+  <div class="header-bar">
+    <h1>Dataset Audit — Conjoint Analysis M2</h1>
+    <span class="meta">Slide 1 / 5 · Overview</span>
+  </div>
+
+  <h2>Two datasets currently in scope</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Dimension</th>
+        <th>Smartphones</th>
+        <th>Tractors</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="label">Source file</td>
+          <td class="cell">smart phone dataset.xlsx</td>
+          <td class="cell">Database_Distance Analysis.xlsx</td></tr>
+      <tr><td class="label">Main sheet shape</td>
+          <td class="cell">1,020 rows × <b>11 cols</b></td>
+          <td class="cell">166 rows × <b>31 cols</b></td></tr>
+      <tr><td class="label">Feature_data schema</td>
+          <td class="cell warn">9 rows × 5 cols (minimal)</td>
+          <td class="cell good">30 rows × 8 cols (rich)</td></tr>
+      <tr><td class="label">Sheets in workbook</td>
+          <td class="cell">2</td>
+          <td class="cell">8 (VARIANTS, Edited, Feature_data, …)</td></tr>
+      <tr><td class="label">Field granularity</td>
+          <td class="cell bad">Heavily composite</td>
+          <td class="cell good">Mostly atomic</td></tr>
+      <tr><td class="label">Has price?</td>
+          <td class="cell">✓  (INR ₹)</td>
+          <td class="cell bad">✗</td></tr>
+      <tr><td class="label">Has sales volume?</td>
+          <td class="cell bad">✗</td>
+          <td class="cell">✓  (2020)</td></tr>
+      <tr><td class="label">Unique brands</td>
+          <td class="cell">56 <span class="warn">(incl. duplicates: OPPO/Oppo)</span></td>
+          <td class="cell bad">2 only (both AGCO subsidiaries)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="findings">
+    <h2>5 key findings that block distance-matrix quality</h2>
+    <ol>
+      <li><b>Column misalignment</b> — 246 smartphone rows have wrong values in <code>os</code> column</li>
+      <li><b>Composite-field explosion</b> — 5 smartphone columns each pack 3–5 independent dimensions</li>
+      <li><b>Format inconsistency</b> — 48 price rows use Indian numbering ("₹1,14,990"); brand casing mixed</li>
+      <li><b>Tractor brand coverage</b> — only Valtra + Massey Ferguson (no competitor benchmark)</li>
+      <li><b>Schema mismatch</b> — two Feature_data sheets have different columns ⇒ no unified pipeline</li>
+    </ol>
+  </div>
+
+  <div class="footer">
+    <span>Conjoint Analysis · Distance-Analysis repo · M2 dataset audit</span>
+    <span>2026-05-19</span>
+  </div>
+</body>
+</html>

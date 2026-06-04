@@ -108,10 +108,11 @@ The conjoint pieces (Modules 2–5) are now wired end to end:
 - **Module 2 — questionnaire generator** (`conjoint/questionnaire.py`,
   `python -m conjoint.generate_questionnaire`) turns a workbook's `Feature_data`
   sheet into a `questionnaire_spec.json` and an empty `responses.csv` template.
-- **Collect ratings** either by filling the template, or via the Streamlit
-  multipage **questionnaire** view (`pages/questionnaire.py`): it renders the
-  Part B-1 levels as 1..5 inputs and downloads a contract-compliant
-  `responses.csv`.
+- **Collect ratings** either by filling the template, or via the standalone
+  **survey app** (`survey.py`, run with `./run.sh survey`): its own
+  `st.navigation` router renders the Part B-1 levels as 1..5 ratings and
+  downloads a contract-compliant `responses.csv`. The view code lives in
+  `survey_views/` and ships with a committed `questionnaire_spec.json`.
 - **Module 3 — estimation** (`python -m conjoint.estimate --responses
   responses.csv --out-utilities utilities.csv --out-importance importance.csv`)
   runs OLS and aggregates per-attribute importance.

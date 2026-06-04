@@ -6,7 +6,8 @@
 #   ./run.sh setup          # only create venv + install deps
 #   ./run.sh preprocess     # regenerate the datasets' outputs/ (incl. attribute maps)
 #   ./run.sh conjoint       # build the conjoint demo + customer-weighted distances
-#   ./run.sh app            # only launch streamlit (assumes venv + outputs/ exist)
+#   ./run.sh app            # only launch the analysis dashboard (assumes venv + outputs/)
+#   ./run.sh survey         # launch the standalone conjoint questionnaire app
 #
 # Tested on macOS and Linux. On Windows, use WSL or run the equivalent
 # commands manually from PowerShell.
@@ -179,11 +180,24 @@ app() {
     python -m streamlit run app.py
 }
 
+survey() {
+    # shellcheck disable=SC1091
+    source "$VENV/bin/activate"
+    if [ ! -f questionnaire_spec.json ]; then
+        warn "questionnaire_spec.json missing — generating it from conjoint_demo.xlsx"
+        python -m conjoint.generate_questionnaire \
+            --excel conjoint_demo.xlsx --out questionnaire_spec.json
+    fi
+    step "Launching standalone conjoint survey app"
+    python -m streamlit run survey.py
+}
+
 case "${1:-all}" in
     setup)      setup ;;
     preprocess) preprocess ;;
     conjoint)   conjoint ;;
     app)        app ;;
+    survey)     survey ;;
     all)        setup; preprocess; conjoint; app ;;
-    *)          echo "Usage: $0 [setup|preprocess|conjoint|app|all]"; exit 2 ;;
+    *)          echo "Usage: $0 [setup|preprocess|conjoint|app|survey|all]"; exit 2 ;;
 esac

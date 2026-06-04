@@ -53,8 +53,8 @@ python -m conjoint.generate_questionnaire \
 
 # 2. Collect ratings → responses.csv
 #    - fill responses_template.csv by hand, OR
-#    - use the Streamlit questionnaire page (pages/questionnaire.py) to enter
-#      1..5 ratings and download a contract-compliant responses.csv.
+#    - run the standalone survey app (./run.sh survey, or streamlit run survey.py)
+#      to enter 1..5 ratings and download a contract-compliant responses.csv.
 
 # 3. Estimate part-worths + importance (OLS → aggregate)
 python -m conjoint.estimate \
@@ -81,11 +81,46 @@ and writes everything to `outputs/conjoint_demo/`. See
 `validation/validation_report_conjoint.md` for the technical-vs-weighted
 comparison.
 
+## Results pack (report / slides)
+
+To bundle the headline conjoint results for the report and slide deck, run:
+
+```bash
+python scripts/export_results_pack.py
+```
+
+This writes `outputs/report_pack/` with the relative-importance table (CSV +
+markdown vs the published N=381 reference), a technical-vs-customer-weighted
+top-3 neighbour comparison for every configuration, offline Plotly figures
+(`importance_pie.html`, `neighbor_shift_bar.html`), and a copy of the
+validation report. Open the `.html` figures in a browser; print to PDF for the
+report appendix if needed.
+
 ## Dashboard
 
-The project includes an interactive Streamlit dashboard for exploring the product portfolio and simulating product removal scenarios. It has a **Technical | Customer-weighted** distance toggle, and a multipage **questionnaire** view (`pages/questionnaire.py`) for collecting conjoint ratings.
+The project includes an interactive Streamlit dashboard for exploring the product portfolio and simulating product removal scenarios. It has a **Technical | Customer-weighted** distance toggle.
 
 Run the dashboard with:
 
 ```bash
-python -m streamlit run app.py
+python -m streamlit run app.py   # or: ./run.sh app
+```
+
+## Survey app
+
+The conjoint **questionnaire** is a separate Streamlit app with its own
+`st.navigation` router (`survey.py`), decoupled from the dashboard. It ships
+with a committed `questionnaire_spec.json` (generated from `conjoint_demo.xlsx`),
+so it works out of the box: a **Welcome** route captures the respondent id and a
+**Part B-1 ratings** route renders the questionnaire dynamically. Respondents
+can rate all attributes, answer a guided profile, or choose a custom attribute
+subset. Skipped questions remain blank in the exported `responses.csv`, so the
+file still matches the contract expected by `python -m conjoint.estimate`.
+
+```bash
+./run.sh survey                  # or: python -m streamlit run survey.py
+```
+
+The view code lives in `survey_views/` (intro, ratings, spec source); the spec
+itself can be regenerated for any workbook with
+`python -m conjoint.generate_questionnaire --excel <wb> --out questionnaire_spec.json`.

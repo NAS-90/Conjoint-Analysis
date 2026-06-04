@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+Pro:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1280px; height: 720px;
+    font-family: 'Source Serif Pro', Georgia, serif;
+    color: #1a1a1a;
+    background: #ffffff;
+    padding: 45px 70px;
+    position: relative;
+  }
+  .header-bar {
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 12px;
+    margin-bottom: 22px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+  .meta { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #666; }
+
+  h2 { font-size: 16px; font-weight: 600; margin: 0 0 12px 0; color: #2c2c2c; }
+
+  table.actions { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 16px; }
+  table.actions th {
+    background: #1a1a1a; color: white;
+    padding: 9px 11px; text-align: left;
+    font-family: 'Source Serif Pro', serif; font-weight: 500;
+    font-size: 13px;
+  }
+  table.actions td {
+    padding: 10px 11px;
+    border-bottom: 1px solid #d4d4cc;
+    vertical-align: top;
+  }
+  .pri {
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    color: white;
+    width: 60px;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+  .pri.p0 { background: #b91c1c; }
+  .pri.p1 { background: #c2410c; }
+  .pri.p2 { background: #ca8a04; }
+  .pri.p3 { background: #4b5563; }
+
+  .issue { font-weight: 600; width: 26%; }
+  .action { width: 38%; font-size: 12px; color: #333; }
+  .owner { width: 14%; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #555; text-align: center; }
+  .effort { width: 12%; text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #555; }
+  code { background: #f0f0e8; padding: 1px 5px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; border-radius: 2px; }
+
+  .two-col-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 6px; }
+
+  .timeline {
+    background: #fafaf5;
+    border: 1px solid #d4d4cc;
+    padding: 14px 18px;
+  }
+  .timeline .week {
+    display: flex;
+    margin: 6px 0;
+    font-size: 12px;
+    align-items: baseline;
+  }
+  .timeline .week-label {
+    width: 100px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+  .timeline .week-task { color: #333; line-height: 1.5; }
+
+  .question-box {
+    background: #1a1a1a;
+    color: white;
+    padding: 14px 18px;
+  }
+  .question-box h2 { color: #fcd34d; margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+  .question-box ul { list-style: none; margin: 0; padding: 0; }
+  .question-box li {
+    font-size: 12.5px;
+    line-height: 1.6;
+    margin: 6px 0;
+    padding-left: 16px;
+    position: relative;
+  }
+  .question-box li::before {
+    content: "?";
+    position: absolute;
+    left: 0;
+    color: #fcd34d;
+    font-weight: 700;
+  }
+
+  .footer {
+    position: absolute;
+    bottom: 18px;
+    left: 70px;
+    right: 70px;
+    display: flex;
+    justify-content: space-between;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    color: #999;
+    border-top: 1px solid #ddd;
+    padding-top: 8px;
+  }
+</style>
+</head>
+<body>
+  <div class="header-bar">
+    <h1>Recommended Actions for M2</h1>
+    <span class="meta">Slide 5 / 5 · Plan</span>
+  </div>
+
+  <h2>Prioritized action list</h2>
+  <table class="actions">
+    <thead>
+      <tr>
+        <th style="width: 60px;">Pri</th>
+        <th>Issue</th>
+        <th>Action</th>
+        <th style="width: 14%;">Owner</th>
+        <th style="width: 12%;">Effort</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="pri p0">P0</td>
+        <td class="issue">Smartphone <code>os</code> column misalignment (255 rows)</td>
+        <td class="action">Re-parse from original source CSV; rebuild column alignment with explicit delimiters</td>
+        <td class="owner">yongheng</td>
+        <td class="effort">½ day</td>
+      </tr>
+      <tr>
+        <td class="pri p0">P0</td>
+        <td class="issue">Composite fields (camera / display / ram / battery / processor / sim)</td>
+        <td class="action">Extend <code>preprocessing_smartphones.py</code> with per-field regex parsers → 24+ atomic columns</td>
+        <td class="owner">yongheng</td>
+        <td class="effort">1–2 days</td>
+      </tr>
+      <tr>
+        <td class="pri p1">P1</td>
+        <td class="issue">Feature_data schema mismatch (5 cols vs 8 cols)</td>
+        <td class="action">Adopt <code>templates/feature_schema_template.xlsx</code> as canonical; backfill smartphones</td>
+        <td class="owner">team</td>
+        <td class="effort">2 hours</td>
+      </tr>
+      <tr>
+        <td class="pri p1">P1</td>
+        <td class="issue">Tractor brand coverage (AGCO-only)</td>
+        <td class="action">Add ≥1 competitor: John Deere or Kubota (scrape spec sheets, normalize to same schema)</td>
+        <td class="owner">team</td>
+        <td class="effort">2–3 days</td>
+      </tr>
+      <tr>
+        <td class="pri p2">P2</td>
+        <td class="issue">Tractor <code>weight=0</code> (4 rows), <code>turning_radius</code> NaN (9.6%)</td>
+        <td class="action">Mark as NaN, decide imputation rule (median by class, or drop)</td>
+        <td class="owner">yongheng</td>
+        <td class="effort">1 hour</td>
+      </tr>
+      <tr>
+        <td class="pri p2">P2</td>
+        <td class="issue">Price format inconsistency, brand casing (OPPO/Oppo)</td>
+        <td class="action">Add normalization helpers — regex on <code>₹</code> + <code>.str.title()</code> on brand</td>
+        <td class="owner">yongheng</td>
+        <td class="effort">1 hour</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="two-col-bottom">
+    <div class="timeline">
+      <h2>Suggested 2-week plan</h2>
+      <div class="week">
+        <span class="week-label">Week 1 →</span>
+        <span class="week-task">P0 fixes: column re-parse + composite parser → re-generate <code>preprocessed_output.csv</code> + distance matrix</span>
+      </div>
+      <div class="week">
+        <span class="week-label">Week 1 →</span>
+        <span class="week-task">Schema template lock-in; doc Nico's alignment on OLS interpretation</span>
+      </div>
+      <div class="week">
+        <span class="week-label">Week 2 →</span>
+        <span class="week-task">Acquire competitor tractor data (John Deere); re-run distance matrix; validate gap=0.8 threshold</span>
+      </div>
+      <div class="week">
+        <span class="week-label">Week 2 →</span>
+        <span class="week-task">P2 polish + dashboard update with cleaned data</span>
+      </div>
+    </div>
+
+    <div class="question-box">
+      <h2>Open questions to discuss</h2>
+      <ul>
+        <li>Confirm the 8-step pipeline (slide 1 of meeting notes) — go / no-go?</li>
+        <li>Do we need a third category beyond smartphones &amp; tractors?</li>
+        <li>How should composite features feed into OLS — one feature per dimension, or one bundled categorical?</li>
+        <li>Gap threshold 0.8 — empirically derived or to be tuned per category?</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>Distance-Analysis · M2 dataset audit · prepared for review with Nico</span>
+    <span>2026-05-19 · yongheng</span>
+  </div>
+</body>
+</html>
