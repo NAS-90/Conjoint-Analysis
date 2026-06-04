@@ -209,6 +209,16 @@ distance_matrix*.csv
 nearest_neighbors*.csv
 distance_summary*.txt
 
+# Dev artifacts (not part of the app)
+# Playwright MCP console/page logs
+.playwright-mcp/
+# root-level redesign screenshots (real images live in presentation/)
+/*.png
+# questionnaire_spec.json.tractor-backup and similar
+*.tractor-backup
+# never commit Streamlit secrets
+.streamlit/secrets.toml
+
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data

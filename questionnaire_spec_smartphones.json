@@ -1,0 +1,133 @@
+{
+  "version": "0.1",
+  "scale": {
+    "min": 1,
+    "max": 5
+  },
+  "attributes": [
+    {
+      "feature_name": "price",
+      "description": "Retail price tier",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each price tier of a smartphone?",
+      "levels": [
+        { "code": "budget", "label": "Budget (< $300)" },
+        { "code": "mid_range", "label": "Mid-range ($300 – $700)" },
+        { "code": "premium", "label": "Premium (> $700)" }
+      ],
+      "status": "active",
+      "scale": { "min": 1, "max": 5 }
+    },
+    {
+      "feature_name": "processor",
+      "description": "System-on-chip tier",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each processor tier?",
+      "levels": [
+        { "code": "entry", "label": "Entry-level (e.g. Snapdragon 4xx / Helio G35)" },
+        { "code": "mainstream", "label": "Mainstream (e.g. Snapdragon 6xx / Dimensity 700)" },
+        { "code": "flagship", "label": "Flagship (e.g. Snapdragon 8 Gen2 / Bionic A16 / Dimensity 9000)" }
+      ],
+      "status": "active",
+      "scale": { "min": 1, "max": 5 }
+    },
+    {
+      "feature_name": "ram",
+      "description": "Memory available to the OS and apps",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each RAM option?",
+      "levels": [
+        { "code": "4gb", "label": "4 GB" },
+        { "code": "8gb", "label": "8 GB" },
+        { "code": "12gb", "label": "12 GB" }
+      ],
+      "status": "active",
+      "scale": { "min": 1, "max": 5 }
+    },
+    {
+      "feature_name": "battery",
+      "description": "Battery capacity",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each battery capacity?",
+      "levels": [
+        { "code": "4000mah", "label": "4 000 mAh" },
+        { "code": "5000mah", "label": "5 000 mAh" },
+        { "code": "6000mah", "label": "6 000 mAh+" }
+      ],
+      "status": "active",
+      "scale": { "min": 1, "max": 5 }
+    },
+    {
+      "feature_name": "display",
+      "description": "Display size",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each display size?",
+      "levels": [
+        { "code": "6_1in", "label": "Compact (6.1 in)" },
+        { "code": "6_5in", "label": "Standard (6.5 in)" },
+        { "code": "6_7in", "label": "Large (6.7 in+)" }
+      ],
+      "status": "active",
+      "scale": { "min": 1, "max": 5 }
+    },
+    {
+      "feature_name": "camera",
+      "description": "Main rear-camera resolution",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each main-camera option?",
+      "levels": [
+        { "code": "12mp", "label": "12 MP" },
+        { "code": "48mp", "label": "48 MP" },
+        { "code": "108mp", "label": "108 MP+" }
+      ],
+      "status": "active",
+      "scale": { "min": 1, "max": 5 }
+    },
+    {
+      "feature_name": "storage",
+      "description": "Built-in (non-expandable) storage",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each storage tier?",
+      "levels": [
+        { "code": "64gb", "label": "64 GB" },
+        { "code": "128gb", "label": "128 GB" },
+        { "code": "256gb", "label": "256 GB+" }
+      ],
+      "status": "active",
+      "scale": { "min": 1, "max": 5 }
+    },
+    {
+      "feature_name": "card",
+      "description": "Expandable storage support",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each memory-card option?",
+      "levels": [
+        { "code": "no_card", "label": "No memory-card slot" },
+        { "code": "card_supported", "label": "Memory card supported" }
+      ],
+      "status": "active",
+      "scale": { "min": 1, "max": 5 }
+    },
+    {
+      "feature_name": "os",
+      "description": "Mobile operating system",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each operating system?",
+      "levels": [
+        { "code": "android", "label": "Android" },
+        { "code": "ios", "label": "iOS" }
+      ],
+      "status": "active",
+      "scale": { "min": 1, "max": 5 }
+    }
+  ]
+}

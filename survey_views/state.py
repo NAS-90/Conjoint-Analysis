@@ -1,8 +1,9 @@
 """Shared ``st.session_state`` keys for the survey app.
 
-Centralising the keys keeps the intro page, the ratings page and the
-``survey.py`` router in agreement about where the respondent id and the
-per-level rating widgets live in session state.
+Centralising the keys keeps the intro page, the ratings page, the
+``survey.py`` router and the ACBC stages (BYO / Screener / Tournament) in
+agreement about where the respondent id, the per-level rating widgets and
+the sequential step pointer live in session state.
 """
 
 from __future__ import annotations
@@ -23,6 +24,31 @@ ATTRIBUTE_SELECTION_KEY = "survey_attribute_selection"
 
 #: The guided profile selected when the respondent wants a shorter focused flow.
 GUIDED_PROFILE_KEY = "survey_guided_profile"
+
+#: Active sequential stage identifier (``ratings`` / ``acbc_byo`` /
+#: ``acbc_screener`` / ``acbc_tournament``). Changing the active stage resets
+#: :data:`STEP_INDEX_KEY` to ``0`` so the new flow starts at its first step.
+STAGE_KEY = "survey_stage"
+
+#: Cursor inside the active stage's step sequence — incremented by Next and
+#: decremented by Back in :func:`survey_views.navigation.render_sequence`.
+STEP_INDEX_KEY = "survey_stage_step_index"
+
+#: Two-level dict ``{stage: {step_identifier: value}}`` holding every
+#: respondent answer collected across stages. Stage-scoped to avoid name
+#: collisions across flows (e.g. the same attribute key used in BYO and
+#: ratings should not overwrite each other).
+STAGE_ANSWERS_KEY = "survey_stage_answers"
+
+#: Survey "mode" — ``rating`` (legacy OLS path) or ``acbc`` (BYO + Screener
+#: + Tournament). Picked on the intro page; consumed by the router.
+SURVEY_MODE_KEY = "survey_mode"
+
+#: ACBC ``st.Page`` references stashed by the router for cross-page nav.
+ACBC_BYO_PAGE_KEY = "survey_acbc_byo_page"
+ACBC_SCREENER_PAGE_KEY = "survey_acbc_screener_page"
+ACBC_TOURNAMENT_PAGE_KEY = "survey_acbc_tournament_page"
+ACBC_SUMMARY_PAGE_KEY = "survey_acbc_summary_page"
 
 
 def rating_key(column: str) -> str:
