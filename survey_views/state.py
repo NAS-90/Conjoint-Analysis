@@ -41,8 +41,17 @@ STEP_INDEX_KEY = "survey_stage_step_index"
 STAGE_ANSWERS_KEY = "survey_stage_answers"
 
 #: Survey "mode" — ``rating`` (legacy OLS path) or ``acbc`` (BYO + Screener
-#: + Tournament). Picked on the intro page; consumed by the router.
+#: + Tournament). Picked on the intro page; consumed by the router's
+#: ``flow_pages`` gate. This is a **plain** (non-widget) key on purpose: the
+#: intro radio writes its choice here via a callback so the mode survives the
+#: ``st.switch_page`` rerun, during which the intro page (and its radio widget)
+#: is not rendered and Streamlit would garbage-collect a widget-keyed value.
 SURVEY_MODE_KEY = "survey_mode"
+
+#: Widget key for the intro mode radio. Kept distinct from
+#: :data:`SURVEY_MODE_KEY` so the router never reads a value that vanishes when
+#: the radio stops rendering (see the note above).
+SURVEY_MODE_CHOICE_KEY = "survey_mode_choice"
 
 #: ACBC ``st.Page`` references stashed by the router for cross-page nav.
 ACBC_BYO_PAGE_KEY = "survey_acbc_byo_page"

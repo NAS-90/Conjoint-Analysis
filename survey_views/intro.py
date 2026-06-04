@@ -15,6 +15,7 @@ from survey_views.state import (
     ACBC_BYO_PAGE_KEY,
     QUESTIONNAIRE_PAGE_KEY,
     RESPONDENT_KEY,
+    SURVEY_MODE_CHOICE_KEY,
     SURVEY_MODE_KEY,
 )
 from survey_views.theme import apply_base_theme, expect_steps
@@ -28,6 +29,21 @@ _MODE_CAPTIONS: tuple[str, ...] = (
     "Design your ideal phone, then make a few quick comparisons. Recommended.",
     "Rate how appealing each feature option is, one screen at a time.",
 )
+
+
+def _persist_mode() -> None:
+    """Mirror the radio choice into the non-widget :data:`SURVEY_MODE_KEY`.
+
+    The router gates the sidebar on :data:`SURVEY_MODE_KEY`. If the radio wrote
+    its choice there directly, ``st.switch_page`` (the "Start" handler) would
+    rerun the script on a *different* page where this radio is not rendered —
+    Streamlit then garbage-collects the radio's widget state, the router falls
+    back to the ACBC default, and the rating page (absent from that flow) can
+    never be reached. Copying into a plain key keeps the choice alive across
+    that rerun. Registered as the radio's ``on_change`` so the sidebar updates
+    with no one-rerun lag.
+    """
+    st.session_state[SURVEY_MODE_KEY] = st.session_state[SURVEY_MODE_CHOICE_KEY]
 
 
 def render_intro() -> None:
@@ -71,16 +87,26 @@ def render_intro() -> None:
         "Leave blank if you prefer.",
     )
 
+    # Seed the widget from the persisted mode so returning to Welcome restores
+    # the previous choice. Seeding via session_state (instead of ``index=``)
+    # also avoids the "default value will be ignored" warning Streamlit emits
+    # when a keyed widget is given both a key and a default.
+    st.session_state.setdefault(
+        SURVEY_MODE_CHOICE_KEY, st.session_state.get(SURVEY_MODE_KEY, MODE_ACBC)
+    )
     st.radio(
         "How would you like to take the survey?",
         options=MODE_OPTIONS,
         captions=_MODE_CAPTIONS,
-        index=0,
-        key=SURVEY_MODE_KEY,
+        key=SURVEY_MODE_CHOICE_KEY,
+        on_change=_persist_mode,
         horizontal=False,
     )
+    # ``on_change`` only fires on interaction; mirror once on first render too so
+    # the router has a mode to gate on before the respondent touches the radio.
+    _persist_mode()
+    mode = st.session_state[SURVEY_MODE_KEY]
 
-    mode = st.session_state.get(SURVEY_MODE_KEY, MODE_ACBC)
     target_key = QUESTIONNAIRE_PAGE_KEY if mode == MODE_RATING else ACBC_BYO_PAGE_KEY
     page = st.session_state.get(target_key)
 
