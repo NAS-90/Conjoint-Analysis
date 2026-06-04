@@ -117,6 +117,35 @@ def test_flow_pages_gates_sidebar_by_mode() -> None:
     assert flow_pages(None, **sentinels) == acbc
 
 
+@pytest.mark.integration
+def test_mode_choice_not_stored_in_router_widget_key() -> None:
+    """The router's mode key must not be a widget key, or "Start" loses it.
+
+    Regression (browser-only, invisible to AppTest's navigation model): the
+    intro radio used to be keyed directly on ``SURVEY_MODE_KEY`` — the same key
+    the router's ``flow_pages`` gate reads. The "Start" button calls
+    ``st.switch_page``, which reruns the script on a *different* page where the
+    intro radio is not rendered; Streamlit then garbage-collects that widget's
+    value, the router falls back to the ACBC default, and the rating page (not
+    in the ACBC flow) becomes unreachable — clicking "Start" for "Rate each
+    option" silently snapped back to Welcome. The choice now lives in a plain
+    key mirrored from a separate radio widget key, so it survives that rerun.
+    """
+    from survey_views.intro import MODE_RATING
+    from survey_views.state import SURVEY_MODE_KEY
+
+    at = AppTest.from_file(str(SURVEY_APP)).run()
+    # No widget may be keyed on the router's mode key (else switch_page's rerun
+    # garbage-collects the chosen mode and the gate reverts to the default).
+    assert all(r.key != SURVEY_MODE_KEY for r in at.radio)
+
+    # Selecting the rating mode still populates the router-facing key (the
+    # widget->plain-key mirror callback is wired), so the gate sees the choice.
+    at.radio[0].set_value(MODE_RATING).run()
+    assert not at.exception
+    assert at.session_state[SURVEY_MODE_KEY] == MODE_RATING
+
+
 @pytest.mark.unit
 def test_guided_profiles_match_real_attributes() -> None:
     """Every guided profile must select >=1 real attribute of the bundled spec.
