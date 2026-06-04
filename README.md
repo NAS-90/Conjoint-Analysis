@@ -27,6 +27,28 @@ python compute_distance_matrix.py --excel <your_file.xlsx>
 It reads the workbook's `Edited` and `Feature_data` sheets, applies the
 metadata rules, and writes one numeric `preprocessed_output.csv` for the
 distance step.
+
+### Smartphone data cleaning (noisy composite strings)
+
+The raw `smart phone dataset.xlsx` stores composite attributes as free text
+(camera `"50 MP + 8 MP + 2 MP Triple Rear & 16 MP Front Camera"`, display
+`"6.7 inches, 1440 x 3216 px, 120 Hz …"`) and has column-shifted feature-phone
+rows. Feeding these verbatim distorts similarity (the `processor`/`os` columns
+alone exploded into ~344 one-hot junk dimensions). Run the cleaner first:
+
+```bash
+python clean_smartphones.py \
+    --input "smart phone dataset.xlsx" \
+    --output "smart phone dataset (cleaned).xlsx"
+python preprocessing.py --excel "smart phone dataset (cleaned).xlsx"
+```
+
+It decomposes each composite string into structured numeric features
+(`camera_main_mp`, `display_size_in`, `display_refresh_hz`, `processor_ghz`,
+`ram_gb`, `storage_gb`, `battery_mah`, `chip_brand`, `os_family`, …) by content
+(not column position), so shifted rows are realigned automatically. Output
+drops from 351 noisy columns to 27 meaningful ones. `./run.sh preprocess` wires
+this in for the smartphone dataset.
 `compute_distance_matrix.py` auto-detects the product label column from
 `product_id`, `product`, `model`, then `brand`; override with
 `--product-col` if needed.

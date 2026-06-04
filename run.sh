@@ -58,11 +58,17 @@ preprocess() {
     ok "tractors regenerated"
 
     step "Smartphones → outputs/smartphones/"
+    # Clean noisy composite strings (camera "50 MP + 8 MP + 2 MP …", display
+    # "6.7 inches, 1440 x 3216 px, 120 Hz …") and realign column-shifted
+    # feature-phone rows before the universal preprocessor runs.
+    python clean_smartphones.py \
+        --input "smart phone dataset.xlsx" \
+        --output "smart phone dataset (cleaned).xlsx"
     python preprocessing.py \
-        --excel "smart phone dataset.xlsx" \
+        --excel "smart phone dataset (cleaned).xlsx" \
         --validation-report validation/preprocess_smartphones.md \
         --attribute-map outputs/smartphones/attribute_column_map.json
-    python compute_distance_matrix.py --excel "smart phone dataset.xlsx" --product-col model
+    python compute_distance_matrix.py --excel "smart phone dataset (cleaned).xlsx" --product-col model
     mv -f preprocessed_output.csv distance_matrix.csv nearest_neighbors.csv distance_summary.txt outputs/smartphones/
     ok "smartphones regenerated"
 
@@ -168,7 +174,7 @@ conjoint() {
     # already carries conjoint attributes (non-empty attribute map) and an
     # importance.csv (or a responses.csv we can estimate from).
     weighted_for_dataset tractors "Database_Distance Analysis.xlsx" model
-    weighted_for_dataset smartphones "smart phone dataset.xlsx" model
+    weighted_for_dataset smartphones "smart phone dataset (cleaned).xlsx" model
     if [ -f templates/custom_product_template.xlsx ]; then
         weighted_for_dataset user_upload templates/custom_product_template.xlsx product
     fi
