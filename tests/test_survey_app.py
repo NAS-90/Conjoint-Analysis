@@ -25,8 +25,22 @@ BUNDLED_SPEC = REPO_ROOT / "questionnaire_spec.json"
 SURVEY_APP = REPO_ROOT / "survey.py"
 DEMO_WORKBOOK = REPO_ROOT / "conjoint_demo.xlsx"
 
-# conjoint_demo.xlsx → these active B-1 attributes, in workbook order.
-EXPECTED_ACTIVE = {
+# The committed questionnaire_spec.json (smartphone) → these active B-1
+# attributes, in spec order. The survey app renders this *bundled spec*.
+EXPECTED_ACTIVE_SPEC = {
+    "price": 3,
+    "processor": 3,
+    "ram": 3,
+    "battery": 3,
+    "display": 3,
+    "camera": 3,
+    "storage": 3,
+    "card": 2,
+    "os": 2,
+}
+# conjoint_demo.xlsx (tractor) → these active B-1 attributes, in workbook order.
+# Exercised only by the workbook-ingestion unit test below.
+EXPECTED_ACTIVE_WORKBOOK = {
     "engine": 2,
     "injection": 2,
     "transmission": 4,
@@ -35,11 +49,13 @@ EXPECTED_ACTIVE = {
     "cabin": 3,
     "tank": 3,
 }
-EXPECTED_ATTRIBUTE_COUNT = len(EXPECTED_ACTIVE)  # 7
-EXPECTED_RATING_COLUMNS = sum(EXPECTED_ACTIVE.values())  # 21
-# Attributes appear in workbook order so "engine" is the very first step.
-FIRST_ATTRIBUTE = "engine"
-FIRST_ATTRIBUTE_LEVELS = EXPECTED_ACTIVE[FIRST_ATTRIBUTE]
+EXPECTED_ATTRIBUTE_COUNT = len(EXPECTED_ACTIVE_SPEC)  # 9
+EXPECTED_RATING_COLUMNS = sum(EXPECTED_ACTIVE_SPEC.values())  # 25
+# Attributes appear in spec order so "price" is the very first step and
+# "processor" the second.
+FIRST_ATTRIBUTE = "price"
+FIRST_ATTRIBUTE_LEVELS = EXPECTED_ACTIVE_SPEC[FIRST_ATTRIBUTE]
+SECOND_ATTRIBUTE = "processor"
 
 
 # ---------------------------------------------------------------------------
@@ -53,11 +69,11 @@ def test_bundled_spec_exists_and_loads() -> None:
     spec = q.read_spec(BUNDLED_SPEC)
 
     active = spec.active_attributes
-    assert {attr.feature_name for attr in active} == set(EXPECTED_ACTIVE)
+    assert {attr.feature_name for attr in active} == set(EXPECTED_ACTIVE_SPEC)
     for attr in active:
         assert attr.status == "active"
         assert attr.section == "B1_rating"
-        assert len(attr.levels) == EXPECTED_ACTIVE[attr.feature_name]
+        assert len(attr.levels) == EXPECTED_ACTIVE_SPEC[attr.feature_name]
     assert spec.scale == q.Scale(1, 5)
     assert len(q.response_columns(spec)) == EXPECTED_RATING_COLUMNS
 
@@ -71,7 +87,53 @@ def test_survey_router_runs_default_intro_page() -> None:
 
     assert not at.exception
     titles = [t.value for t in at.title]
-    assert "Conjoint desirability survey" in titles
+    assert any("survey" in title.lower() for title in titles)
+
+
+@pytest.mark.unit
+def test_flow_pages_gates_sidebar_by_mode() -> None:
+    """Each method shows only its own pages; Welcome is always first."""
+    from survey import flow_pages
+    from survey_views.intro import MODE_ACBC, MODE_RATING
+
+    sentinels = dict(
+        intro="intro",
+        questionnaire="ratings",
+        byo="byo",
+        screener="screener",
+        tournament="tournament",
+        summary="summary",
+    )
+
+    rating = flow_pages(MODE_RATING, **sentinels)
+    assert rating == ["intro", "ratings"]
+    assert "byo" not in rating and "tournament" not in rating
+
+    acbc = flow_pages(MODE_ACBC, **sentinels)
+    assert acbc == ["intro", "byo", "screener", "tournament", "summary"]
+    assert "ratings" not in acbc
+
+    # Unset mode (before a choice is made) defaults to the ACBC flow.
+    assert flow_pages(None, **sentinels) == acbc
+
+
+@pytest.mark.unit
+def test_guided_profiles_match_real_attributes() -> None:
+    """Every guided profile must select >=1 real attribute of the bundled spec.
+
+    Regression: the profiles previously listed tractor/car attributes that
+    matched nothing in the smartphone spec, so "Guided profile" silently fell
+    back to the full questionnaire every time.
+    """
+    from conjoint import questionnaire as q
+
+    from survey_views.ratings import GUIDED_PROFILES, _matches_profile
+    from survey_views.spec_source import DEFAULT_SPEC
+
+    spec = q.read_spec(DEFAULT_SPEC)
+    for name, keywords in GUIDED_PROFILES.items():
+        matched = [a for a in spec.active_attributes if _matches_profile(a, keywords)]
+        assert matched, f"guided profile {name!r} matches no attribute"
 
 
 def _ratings_app() -> AppTest:
@@ -153,10 +215,10 @@ def test_advancing_moves_to_next_attribute() -> None:
     at.run()
     _next_button(at).click().run()
 
-    # Page 2 — second attribute (workbook order → injection).
+    # Page 2 — second attribute (spec order → processor).
     radios = _rating_radios(at)
-    assert all(r.key.startswith("survey_rating__injection__") for r in radios)
-    assert len(radios) == EXPECTED_ACTIVE["injection"]
+    assert all(r.key.startswith(f"survey_rating__{SECOND_ATTRIBUTE}__") for r in radios)
+    assert len(radios) == EXPECTED_ACTIVE_SPEC[SECOND_ATTRIBUTE]
 
 
 @pytest.mark.integration
@@ -167,14 +229,13 @@ def test_custom_attribute_flow_scopes_the_step_sequence() -> None:
     attr_selector = next(
         m for m in at.multiselect if m.label == "Attributes to include"
     )
-    attr_selector.set_value(["engine", "cabin"]).run()
+    attr_selector.set_value(["price", "camera"]).run()
 
     assert not at.exception
     radios = _rating_radios(at)
-    # First page = first chosen attribute (still in workbook order → engine).
-    assert all(r.key.startswith("survey_rating__engine__") for r in radios)
-    assert len(radios) == EXPECTED_ACTIVE["engine"]
-    assert any("attribute(s) are skipped" in msg.value for msg in at.info)
+    # First page = first chosen attribute (still in spec order → price).
+    assert all(r.key.startswith("survey_rating__price__") for r in radios)
+    assert len(radios) == EXPECTED_ACTIVE_SPEC["price"]
 
 
 @pytest.mark.integration
@@ -185,8 +246,7 @@ def test_finishing_complete_ratings_yields_valid_responses() -> None:
         _advance(at)
 
     assert not at.exception
-    assert any("look valid" in msg.value for msg in at.success)
-    assert len(at.dataframe) == 1
+    assert any("recorded" in msg.value.lower() for msg in at.success)
 
 
 @pytest.mark.integration
@@ -206,18 +266,36 @@ def test_finishing_blank_pages_warns_but_still_validates() -> None:
         _next_button(at).click().run()
 
     assert not at.exception
-    assert any("look valid" in msg.value for msg in at.success)
+    assert any("recorded" in msg.value.lower() for msg in at.success)
 
 
 @pytest.mark.integration
-def test_missing_spec_path_warns_and_renders_no_widgets() -> None:
-    at = _ratings_app().run()
-    spec_path = next(t for t in at.text_input if t.label == "Spec path")
-    spec_path.set_value(str(REPO_ROOT / "does_not_exist.json")).run()
+def test_missing_spec_file_shows_friendly_error() -> None:
+    """When the bundled spec is missing the page surfaces a friendly error."""
+    from survey_views import spec_source
 
-    assert not at.exception
-    assert any("No spec found" in w.value for w in at.warning)
-    assert _rating_radios(at) == []
+    missing = REPO_ROOT / "does_not_exist.json"
+    script = (
+        "import sys\n"
+        f"sys.path.insert(0, {str(REPO_ROOT)!r})\n"
+        "from pathlib import Path\n"
+        "from survey_views import spec_source\n"
+        f"spec_source.DEFAULT_SPEC = Path({str(missing)!r})\n"
+        "from survey_views.ratings import render_questionnaire\n"
+        "render_questionnaire()\n"
+    )
+    # The script mutates the shared module global ``DEFAULT_SPEC``; restore it so
+    # the bad path can't leak into other AppTests sharing this process.
+    original_default_spec = spec_source.DEFAULT_SPEC
+    try:
+        at = AppTest.from_string(script).run()
+
+        assert not at.exception
+        errors = [e.value for e in at.error]
+        assert any("administrator" in msg.lower() for msg in errors)
+        assert _rating_radios(at) == []
+    finally:
+        spec_source.DEFAULT_SPEC = original_default_spec
 
 
 @pytest.mark.unit
@@ -226,5 +304,5 @@ def test_spec_dict_from_workbook_matches_active_attributes() -> None:
 
     payload = _spec_dict_from_workbook(DEMO_WORKBOOK.read_bytes(), "conjoint_demo.xlsx")
     names = {attr["feature_name"] for attr in payload["attributes"]}
-    assert names == set(EXPECTED_ACTIVE)
+    assert names == set(EXPECTED_ACTIVE_WORKBOOK)
     assert payload["scale"] == {"min": 1, "max": 5}

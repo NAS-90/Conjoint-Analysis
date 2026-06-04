@@ -345,6 +345,129 @@ def attribute_importance(
 
 
 # ---------------------------------------------------------------------------
+# §9.8 — utility rescaling (readability transforms; the raw path is untouched)
+# ---------------------------------------------------------------------------
+#: Method names accepted by :func:`rescale_utilities`.
+RESCALE_ZERO_CENTERED = "zero_centered"
+RESCALE_ZERO_CENTERED_DIFFS = "zero_centered_diffs"
+RESCALE_NORMALIZED_RANGES = "normalized_ranges"
+
+
+def _attribute_range(per_level: Mapping[str, float]) -> float:
+    """``max - min`` of an attribute's level utilities (``0`` when empty)."""
+    values = list(per_level.values())
+    if not values:
+        return 0.0
+    return float(max(values) - min(values))
+
+
+def zero_center_utilities(
+    utilities: Mapping[str, Mapping[str, float]],
+) -> "OrderedDict[str, OrderedDict[str, float]]":
+    """Subtract each attribute's mean so its level utilities sum to zero.
+
+    Effects-coded β already satisfy ``Σ level utilities = 0`` per attribute
+    (§9.5), but this makes the constraint explicit for utilities that arrive
+    from elsewhere. Returns a fresh structure — the input is never mutated.
+    """
+    rescaled: "OrderedDict[str, OrderedDict[str, float]]" = OrderedDict()
+    for attribute, per_level in utilities.items():
+        values = list(per_level.values())
+        mean = sum(values) / len(values) if values else 0.0
+        rescaled[attribute] = OrderedDict(
+            (level, float(value) - mean) for level, value in per_level.items()
+        )
+    return rescaled
+
+
+def rescale_zero_centered_diffs(
+    utilities: Mapping[str, Mapping[str, float]],
+    *,
+    target_range: float = 100.0,
+) -> "OrderedDict[str, OrderedDict[str, float]]":
+    """Sawtooth "zero-centered diffs": mean attribute range → ``target_range``.
+
+    Zero-centres within each attribute, then multiplies *every* utility by the
+    single constant ``target_range · A / Σ_a range_a`` (``A`` = attribute
+    count). The average best–worst spread across attributes then equals
+    ``target_range`` while *relative importance is preserved* (one global
+    factor). This is the canonical readable scale Sawtooth reports.
+    """
+    centred = zero_center_utilities(utilities)
+    ranges = [_attribute_range(per_level) for per_level in centred.values()]
+    total_range = float(sum(ranges))
+    n_attr = len(centred)
+    if total_range <= 0.0 or n_attr == 0:
+        return centred
+    factor = target_range * n_attr / total_range
+    return OrderedDict(
+        (
+            attribute,
+            OrderedDict((level, value * factor) for level, value in per_level.items()),
+        )
+        for attribute, per_level in centred.items()
+    )
+
+
+def normalize_utility_ranges(
+    utilities: Mapping[str, Mapping[str, float]],
+    *,
+    scale: float = 100.0,
+) -> "OrderedDict[str, OrderedDict[str, float]]":
+    """Per-attribute ``0..scale`` normalisation ("utility ranges normalized").
+
+    Each attribute is rescaled *independently* so its worst level maps to ``0``
+    and its best to ``scale`` (flat attributes map to all-zero). This answers
+    "within this attribute, how much better is the best level" but discards
+    cross-attribute importance, so it is a readability view — **not** a
+    simulation input. Use :func:`rescale_zero_centered_diffs` for simulation.
+    """
+    rescaled: "OrderedDict[str, OrderedDict[str, float]]" = OrderedDict()
+    for attribute, per_level in utilities.items():
+        values = [float(value) for value in per_level.values()]
+        if not values:
+            rescaled[attribute] = OrderedDict()
+            continue
+        low, high = min(values), max(values)
+        span = high - low
+        if span <= 0.0:
+            rescaled[attribute] = OrderedDict((level, 0.0) for level in per_level)
+        else:
+            rescaled[attribute] = OrderedDict(
+                (level, (float(value) - low) / span * scale)
+                for level, value in per_level.items()
+            )
+    return rescaled
+
+
+def rescale_utilities(
+    utilities: Mapping[str, Mapping[str, float]],
+    *,
+    method: str = RESCALE_ZERO_CENTERED_DIFFS,
+    **kwargs: float,
+) -> "OrderedDict[str, OrderedDict[str, float]]":
+    """Dispatch a §9.8 readability rescaling over a ``{attr: {level: u}}`` map.
+
+    ``method`` is one of :data:`RESCALE_ZERO_CENTERED_DIFFS` (default),
+    :data:`RESCALE_NORMALIZED_RANGES`, or :data:`RESCALE_ZERO_CENTERED`.
+    Extra keyword arguments (``target_range`` / ``scale``) flow to the chosen
+    transform. The input mapping is never mutated.
+    """
+    if method == RESCALE_ZERO_CENTERED_DIFFS:
+        return rescale_zero_centered_diffs(utilities, **kwargs)
+    if method == RESCALE_NORMALIZED_RANGES:
+        return normalize_utility_ranges(utilities, **kwargs)
+    if method == RESCALE_ZERO_CENTERED:
+        if kwargs:
+            raise ValueError(f"{RESCALE_ZERO_CENTERED!r} takes no extra arguments")
+        return zero_center_utilities(utilities)
+    raise ValueError(
+        f"unknown rescaling method {method!r}; expected one of "
+        f"{(RESCALE_ZERO_CENTERED_DIFFS, RESCALE_NORMALIZED_RANGES, RESCALE_ZERO_CENTERED)}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # End-to-end convenience
 # ---------------------------------------------------------------------------
 def fit_from_responses(
@@ -464,6 +587,7 @@ def fit_hb(
 
     chain_means: list[np.ndarray] = []  # per-chain β means after burn-in
     population_samples_all: list[np.ndarray] = []  # per-chain μ samples
+    sigma_means: list[np.ndarray] = []  # per-chain mean of the Σ draws
     rng_master = np.random.default_rng(seed)
 
     for chain in range(n_chains):
@@ -475,6 +599,7 @@ def fit_hb(
 
         kept_betas: list[np.ndarray] = []  # post-burn-in β snapshots
         kept_mu: list[np.ndarray] = []
+        kept_sigma: list[np.ndarray] = []  # post-burn-in Σ (Inverse-Wishart) draws
 
         for step in range(n_iter):
             # Respondent βs (Metropolis).
@@ -503,18 +628,23 @@ def fit_hb(
             if step >= burn_in and (step - burn_in) % thinning == 0:
                 kept_betas.append(betas.copy())
                 kept_mu.append(population_mean.copy())
+                kept_sigma.append(population_cov.copy())
 
         if not kept_betas:
             raise RuntimeError("no samples retained after burn-in / thinning")
         chain_means.append(np.mean(np.stack(kept_betas), axis=0))
         population_samples_all.append(np.stack(kept_mu))
+        sigma_means.append(np.mean(np.stack(kept_sigma), axis=0))
 
     chain_population = np.stack([samples.mean(axis=0) for samples in population_samples_all])
     population_mean = chain_population.mean(axis=0)
-    # Posterior covariance: pooled across chains.
-    chain_cov = np.mean(
-        [np.cov(samples.T) for samples in population_samples_all], axis=0
-    )
+    # Heterogeneity covariance Σ — the *between-respondent* covariance the
+    # hierarchy actually models. We average the per-iteration Inverse-Wishart
+    # draws (``_sample_inverse_wishart``) over the post-burn-in samples and
+    # across chains. (The earlier implementation returned ``cov`` of the μ
+    # *posterior* samples, which shrinks toward 0 as the chains converge and is
+    # not the heterogeneity Σ at all.)
+    population_cov = np.mean(np.stack(sigma_means), axis=0)
 
     rhat = _gelman_rubin(population_samples_all)
 
@@ -525,7 +655,7 @@ def fit_hb(
         respondent_ids=tuple(rid for rid, _, _, _ in blocks),
         beta_means=beta_means,
         population_mean=population_mean,
-        population_cov=chain_cov,
+        population_cov=population_cov,
         rhat=rhat,
         column_names=columns,
         level_map=level_map,
@@ -605,6 +735,55 @@ def hb_attribute_importance(fit: HBFit) -> pd.DataFrame:
         converged=True,
     )
     return attribute_importance(mnl_proxy)
+
+
+def per_respondent_rlh_hb(
+    df: pd.DataFrame,
+    hb_fit: HBFit,
+    *,
+    attribute_levels: Mapping[str, Sequence[str]] | None = None,
+) -> pd.DataFrame:
+    """Per-respondent RLH scored with each respondent's *own* HB β_i.
+
+    Sawtooth measures attention with **individual-level** utilities, not the
+    population mean (which :func:`per_respondent_rlh` uses). For respondent
+    ``i`` with ``T_i`` Tournament tasks::
+
+        RLH_i = exp( LL_i(β_i) / T_i )
+
+    where ``β_i`` is the respondent's posterior-mean utility vector from the
+    HB fit. Respondents absent from ``hb_fit`` (e.g. dropped before fitting)
+    are skipped. The β columns align with the fit because both this routine
+    and the fit build the design matrix from ``hb_fit.level_map``.
+
+    Returns a frame with columns ``respondent``, ``rlh``, ``n_tasks`` — the
+    same schema as :func:`per_respondent_rlh`, so it feeds straight into
+    :func:`filter_by_rlh`.
+    """
+    tournament = df[df[STAGE_COL] == STAGE_TOURNAMENT]
+    if tournament.empty:
+        return pd.DataFrame(columns=[RESPONDENT_COL, "rlh", "n_tasks"])
+
+    level_map = hb_fit.level_map or _level_map_from_frame(tournament, attribute_levels)
+    beta_by_respondent = {
+        respondent: beta
+        for respondent, beta in zip(hb_fit.respondent_ids, hb_fit.beta_means)
+    }
+
+    rows: list[dict[str, object]] = []
+    for respondent, block in tournament.groupby(RESPONDENT_COL, sort=False):
+        beta_i = beta_by_respondent.get(respondent)
+        if beta_i is None:
+            continue
+        X, y, groups, _, _ = build_tournament_matrix(
+            block.assign(**{STAGE_COL: STAGE_TOURNAMENT}), level_map
+        )
+        ll = mnl_log_likelihood(np.asarray(beta_i, dtype=float), X, y, groups)
+        n_tasks = int(np.unique(groups).size)
+        rows.append(
+            {RESPONDENT_COL: respondent, "rlh": compute_rlh(ll, n_tasks), "n_tasks": n_tasks}
+        )
+    return pd.DataFrame(rows, columns=[RESPONDENT_COL, "rlh", "n_tasks"])
 
 
 # ---------------------------------------------------------------------------

@@ -1,14 +1,13 @@
-"""ACBC Screener route — Yes/No on BYO-anchored profile pool.
+"""Step 2 of the conjoint survey — accept-or-reject candidate configurations.
 
-Drives one Screener profile per page via the sequential navigation
-controller. The pool is generated from the BYO anchor that
-:mod:`survey_views.acbc_byo` left in session state under
-``ACBC_ANCHOR_KEY``; if the anchor is missing the page asks the
-respondent to complete BYO first.
+Respondent-facing route. Internally this is the ACBC Screener: a small pool
+of profiles is generated around the Step-1 anchor and the respondent says
+Yes/No to each one. The UI hides that terminology and any design-control
+widgets — defaults are picked here so the respondent only sees questions.
 
-On Finish, the surviving profiles (Yes votes) plus the BYO anchor are
-stashed under :data:`ACBC_SURVIVORS_KEY` so the Tournament can use
-them as its profile pool.
+On Finish, the accepted profiles (plus the anchor) are stashed under
+:data:`ACBC_SURVIVORS_KEY` so Step 3 (Tournament) uses them as its profile
+pool.
 """
 
 from __future__ import annotations
@@ -30,12 +29,18 @@ from survey_views.navigation import (
     reset_stage,
     stage_answers,
 )
-from survey_views.spec_source import load_spec
+from survey_views.spec_source import (
+    attribute_display_name,
+    format_level,
+    level_label_map,
+    load_spec,
+)
 from survey_views.state import (
     ACBC_BYO_PAGE_KEY,
     ACBC_TOURNAMENT_PAGE_KEY,
     RESPONDENT_KEY,
 )
+from survey_views.theme import apply_base_theme, flow_header
 
 STAGE = "acbc_screener"
 
@@ -46,10 +51,13 @@ ACBC_SCREENER_RESPONSES_KEY = "acbc_screener_responses"
 #: Session-state flag toggled when the Screener has finished.
 ACBC_SCREENER_FINISHED_KEY = "acbc_screener_finished"
 
-SCREENER_SEED_KEY = "acbc_screener_seed"
+#: Fixed defaults chosen so respondents never see design knobs.
+_SCREENER_SEED = 2026
 
 
-def _screener_step(task_id: int, profile: Profile) -> Step:
+def _screener_step(
+    task_id: int, profile: Profile, labels: dict[str, dict[str, str]]
+) -> Step:
     """One :class:`Step` rendering a single Screener profile."""
 
     def render() -> bool:
@@ -58,7 +66,10 @@ def _screener_step(task_id: int, profile: Profile) -> Step:
         )
         with st.container(border=True):
             for attribute, code in profile.levels:
-                st.markdown(f"- **{attribute}**: {code}")
+                st.markdown(
+                    f"- **{attribute_display_name(attribute)}**: "
+                    f"{format_level(labels, attribute, code)}"
+                )
 
         previous = get_answer(STAGE, str(task_id))
         options = ["Yes", "No"]
@@ -77,7 +88,7 @@ def _screener_step(task_id: int, profile: Profile) -> Step:
 
     return Step(
         identifier=f"profile_{task_id}",
-        title=f"Profile {task_id}",
+        title=f"Option {task_id}",
         render=render,
     )
 
@@ -104,49 +115,34 @@ def _collected_responses(
 
 
 def render_screener() -> None:
-    """Render the ACBC Screener route (one profile per page)."""
-    st.title("ACBC Screener — would you consider these?")
+    """Render Step 2 (one configuration per page)."""
+    apply_base_theme()
 
     spec = load_spec()
     if spec is None:
         return
+
+    flow_header(
+        2,
+        3,
+        "Would you consider these phones?",
+        "For each example phone, tell us whether you would consider buying it.",
+    )
+
     anchor = st.session_state.get(ACBC_ANCHOR_KEY)
     if anchor is None:
         st.warning(
-            "No BYO anchor in session — finish the BYO route first so we can "
-            "generate Screener profiles."
+            "Please answer Step 1 first so we can tailor the next questions to "
+            "your preferences."
         )
         byo_page = st.session_state.get(ACBC_BYO_PAGE_KEY)
-        if byo_page is not None and st.button("Go to BYO →", type="primary"):
+        if byo_page is not None and st.button("Go to Step 1 →", type="primary"):
             st.switch_page(byo_page)
         return
 
     attribute_levels = attribute_levels_from_spec(spec)
-    with st.sidebar:
-        st.header("ACBC Screener")
-        seed = int(
-            st.number_input(
-                "Random seed", min_value=0, value=2026, step=1, key=SCREENER_SEED_KEY
-            )
-        )
-        n_profiles = int(
-            st.number_input(
-                "Profiles to show",
-                min_value=3,
-                max_value=24,
-                value=acbc_screener.DEFAULT_SCREENER_POOL,
-                step=1,
-            )
-        )
-        max_changes = int(
-            st.number_input(
-                "Max attributes flipped per profile",
-                min_value=1,
-                max_value=max(1, len(attribute_levels)),
-                value=min(acbc_screener.DEFAULT_MAX_CHANGES, len(attribute_levels)),
-                step=1,
-            )
-        )
+    n_profiles = acbc_screener.DEFAULT_SCREENER_POOL
+    max_changes = min(acbc_screener.DEFAULT_MAX_CHANGES, len(attribute_levels))
 
     try:
         profiles = acbc_screener.seed_screener_pool(
@@ -154,17 +150,14 @@ def render_screener() -> None:
             attribute_levels,
             n_profiles=n_profiles,
             max_changes=max_changes,
-            seed=seed,
+            seed=_SCREENER_SEED,
         )
-    except ValueError as exc:
-        st.error(f"Could not seed Screener pool: {exc}")
+    except ValueError:
+        st.error("We could not prepare the next questions. Please try again later.")
         return
 
     respondent = str(st.session_state.get(RESPONDENT_KEY, "") or "").strip() or "1"
-    st.caption(
-        f"Respondent **{respondent}** · {len(profiles)} candidate profiles · "
-        f"≤ {max_changes} flips from your BYO anchor."
-    )
+    st.caption(f"{len(profiles)} example phones, one per screen.")
 
     st.session_state.setdefault(ACBC_SCREENER_FINISHED_KEY, False)
 
@@ -178,36 +171,32 @@ def render_screener() -> None:
         st.session_state[ACBC_SCREENER_FINISHED_KEY] = True
 
     if not st.session_state[ACBC_SCREENER_FINISHED_KEY]:
-        steps = tuple(_screener_step(i + 1, p) for i, p in enumerate(profiles))
-        render_sequence(STAGE, steps, on_complete=on_complete, progress_label="Profile")
-        return
+        labels = level_label_map(spec)
+        steps = tuple(
+            _screener_step(i + 1, p, labels) for i, p in enumerate(profiles)
+        )
+        render_sequence(STAGE, steps, on_complete=on_complete, progress_label="Option")
 
-    survivors = st.session_state.get(ACBC_SURVIVORS_KEY, ()) or ()
-    responses = st.session_state.get(ACBC_SCREENER_RESPONSES_KEY, ())
+    if st.session_state[ACBC_SCREENER_FINISHED_KEY]:
+        responses = st.session_state.get(ACBC_SCREENER_RESPONSES_KEY, ())
+        accepted = sum(1 for r in responses if r.accepted)
+        st.success(
+            f"Thanks! You said *yes* to {accepted} of {len(responses)} "
+            "configurations — they will be used in the final step."
+        )
 
-    accepted = sum(1 for r in responses if r.accepted)
-    st.success(
-        f"Screener recorded: {accepted}/{len(responses)} accepted · "
-        f"{len(survivors)} profiles (incl. BYO anchor) go into the Tournament."
-    )
-
-    if survivors:
-        with st.expander("Survivors", expanded=False):
-            for profile in survivors:
-                st.markdown(", ".join(f"**{a}** = {c}" for a, c in profile.levels))
-
-    tournament_page = st.session_state.get(ACBC_TOURNAMENT_PAGE_KEY)
-    cols = st.columns(2)
-    with cols[0]:
-        if tournament_page is not None and st.button("Continue to Tournament →", type="primary"):
-            st.switch_page(tournament_page)
-    with cols[1]:
-        if st.button("Restart Screener"):
-            st.session_state[ACBC_SCREENER_FINISHED_KEY] = False
-            st.session_state.pop(ACBC_SURVIVORS_KEY, None)
-            st.session_state.pop(ACBC_SCREENER_RESPONSES_KEY, None)
-            reset_stage(STAGE)
-            st.rerun()
+        tournament_page = st.session_state.get(ACBC_TOURNAMENT_PAGE_KEY)
+        cols = st.columns(2)
+        with cols[0]:
+            if tournament_page is not None and st.button("Continue →", type="primary"):
+                st.switch_page(tournament_page)
+        with cols[1]:
+            if st.button("Start over"):
+                st.session_state[ACBC_SCREENER_FINISHED_KEY] = False
+                st.session_state.pop(ACBC_SURVIVORS_KEY, None)
+                st.session_state.pop(ACBC_SCREENER_RESPONSES_KEY, None)
+                reset_stage(STAGE)
+                st.rerun()
 
 
 if __name__ == "__main__":  # pragma: no cover - manual ``streamlit run``

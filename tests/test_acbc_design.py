@@ -99,6 +99,67 @@ def test_orthogonality_check_returns_finite_number() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Minimal overlap metric — zero-count cells must count (§8 / §9.1)
+# ---------------------------------------------------------------------------
+@pytest.mark.unit
+def test_pair_imbalance_penalises_never_co_occurring_levels() -> None:
+    # Both columns are individually balanced (2x each level) but the joint
+    # distribution is degenerate: (a,x) and (b,y) only. The (a,y)/(b,x) cells
+    # are never observed, so a faithful overlap metric must be > 0.
+    left = ["a", "a", "b", "b"]
+    right = ["x", "x", "y", "y"]
+    assert acbc_design._pair_imbalance(left, right) > 0
+
+    # A perfectly crossed design (every pair once) has zero imbalance.
+    crossed_left = ["a", "a", "b", "b"]
+    crossed_right = ["x", "y", "x", "y"]
+    assert acbc_design._pair_imbalance(crossed_left, crossed_right) == 0
+
+
+# ---------------------------------------------------------------------------
+# Prohibited combinations (§9.1)
+# ---------------------------------------------------------------------------
+@pytest.mark.unit
+def test_generate_profiles_excludes_prohibited_combination() -> None:
+    prohibited = [(("engine", "premium"), ("cabin", "closed"))]
+    profiles = generate_profiles(SPEC, n_profiles=24, seed=99, prohibited=prohibited)
+
+    # The forbidden (premium, closed) pairing must not appear in any profile.
+    for profile in profiles:
+        levels = profile.as_dict
+        assert not (levels["engine"] == "premium" and levels["cabin"] == "closed")
+
+    # Per-attribute level balance is preserved by within-column swaps.
+    assert acbc_design.level_balance_deviation(profiles, SPEC) == 0.0
+
+
+@pytest.mark.unit
+def test_generate_profiles_handles_multiple_prohibited_pairs() -> None:
+    prohibited = [
+        (("engine", "premium"), ("transmission", "cvt")),
+        (("engine", "basic"), ("cabin", "open")),
+    ]
+    profiles = generate_profiles(SPEC, n_profiles=36, seed=7, prohibited=prohibited)
+    for profile in profiles:
+        levels = profile.as_dict
+        assert not (levels["engine"] == "premium" and levels["transmission"] == "cvt")
+        assert not (levels["engine"] == "basic" and levels["cabin"] == "open")
+
+
+@pytest.mark.unit
+def test_generate_profiles_rejects_invalid_prohibited() -> None:
+    # Unknown attribute.
+    with pytest.raises(ValueError):
+        generate_profiles(SPEC, n_profiles=12, seed=1, prohibited=[(("nope", "x"), ("cabin", "open"))])
+    # Unknown level.
+    with pytest.raises(ValueError):
+        generate_profiles(SPEC, n_profiles=12, seed=1, prohibited=[(("engine", "ghost"), ("cabin", "open"))])
+    # Same attribute on both sides.
+    with pytest.raises(ValueError):
+        generate_profiles(SPEC, n_profiles=12, seed=1, prohibited=[(("engine", "basic"), ("engine", "premium"))])
+
+
+# ---------------------------------------------------------------------------
 # Tournament
 # ---------------------------------------------------------------------------
 @pytest.mark.unit
@@ -115,10 +176,41 @@ def test_build_tasks_partitions_pool() -> None:
 
 
 @pytest.mark.unit
-def test_build_tasks_rejects_too_small_pool() -> None:
-    profiles = generate_profiles(SPEC, n_profiles=6, seed=2)
+def test_build_tasks_rejects_pool_smaller_than_one_task() -> None:
+    # Fewer profiles than a single choice set can hold → cannot form a task.
+    profiles = generate_profiles(SPEC, n_profiles=12, seed=2)[:2]
     with pytest.raises(ValueError):
         build_tasks(profiles, n_tasks=5, alts_per_task=3, seed=2)
+
+
+@pytest.mark.unit
+def test_build_tasks_reuses_profiles_for_small_pool() -> None:
+    # 6 profiles, 5 tasks of 3 → 15 slots > 6, so profiles must reuse across
+    # tasks (the live Screener → Tournament path). This previously raised.
+    profiles = generate_profiles(SPEC, n_profiles=6, seed=2)
+    tasks = build_tasks(profiles, n_tasks=5, alts_per_task=3, seed=2)
+
+    assert len(tasks) == 5
+    seen_sets = set()
+    for task in tasks:
+        assert len(task.alternatives) == 3
+        # No duplicate profile inside a task.
+        assert len({alt.levels for alt in task.alternatives}) == 3
+        seen_sets.add(frozenset(alt.levels for alt in task.alternatives))
+    # Tasks are distinct comparisons (no repeated screen)...
+    assert len(seen_sets) == 5
+    # ...and the small pool forces at least one profile to recur across tasks.
+    total_slots = sum(len(t.alternatives) for t in tasks)
+    distinct_profiles = {alt.levels for t in tasks for alt in t.alternatives}
+    assert total_slots > len(distinct_profiles)
+
+
+@pytest.mark.unit
+def test_build_tasks_reuse_is_reproducible() -> None:
+    profiles = generate_profiles(SPEC, n_profiles=6, seed=2)
+    a = build_tasks(profiles, n_tasks=5, alts_per_task=3, seed=9)
+    b = build_tasks(profiles, n_tasks=5, alts_per_task=3, seed=9)
+    assert a == b
 
 
 # ---------------------------------------------------------------------------

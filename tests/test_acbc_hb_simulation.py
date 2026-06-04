@@ -83,6 +83,64 @@ def test_fit_hb_recovers_population_mean() -> None:
 
 
 @pytest.mark.unit
+def test_fit_hb_population_cov_is_positive_definite() -> None:
+    """Σ must be the heterogeneity covariance: symmetric, PD, positive diagonal.
+
+    The earlier implementation returned the covariance of the μ *posterior*
+    samples, which shrinks toward 0 as the chains converge (and can be
+    singular). The fix averages the per-iteration Inverse-Wishart Σ draws.
+    """
+    df = _simulate(pool_size=60, n_tasks=20, n_respondents=30, seed=61)
+    fit = acbc_estimate.fit_hb(
+        df, attribute_levels=SPEC,
+        n_iter=300, burn_in=150, thinning=2, n_chains=2, seed=61,
+    )
+    sigma = fit.population_cov
+    assert sigma.shape == (len(TRUE_BETA), len(TRUE_BETA))
+    # Symmetric.
+    assert np.allclose(sigma, sigma.T, atol=1e-8)
+    # Positive diagonal (real per-feature heterogeneity variance).
+    assert np.all(np.diag(sigma) > 0), np.diag(sigma)
+    # Positive-definite ⇒ Cholesky succeeds and all eigenvalues are > 0.
+    np.linalg.cholesky(sigma)
+    assert np.all(np.linalg.eigvalsh(sigma) > 0)
+
+
+@pytest.mark.unit
+def test_per_respondent_rlh_hb_uses_individual_betas() -> None:
+    df = _simulate(pool_size=60, n_tasks=20, n_respondents=12, seed=67)
+    fit = acbc_estimate.fit_hb(
+        df, attribute_levels=SPEC,
+        n_iter=300, burn_in=150, thinning=2, n_chains=2, seed=67,
+    )
+    hb_rlh = acbc_estimate.per_respondent_rlh_hb(df, fit)
+
+    assert set(hb_rlh.columns) == {"respondent", "rlh", "n_tasks"}
+    assert len(hb_rlh) == 12
+    assert (hb_rlh["rlh"] > 0).all() and (hb_rlh["rlh"] <= 1).all()
+    # Individual β_i should fit each respondent's own choices at least as well
+    # as the shared population β on average (that's the point of HB).
+    mnl = acbc_estimate.fit_from_responses(df, SPEC)
+    pop_rlh = acbc_estimate.per_respondent_rlh(df, mnl, attribute_levels=SPEC)
+    merged = hb_rlh.merge(pop_rlh, on="respondent", suffixes=("_hb", "_pop"))
+    assert merged["rlh_hb"].mean() >= merged["rlh_pop"].mean() - 1e-9
+
+
+@pytest.mark.unit
+def test_per_respondent_rlh_hb_empty_without_tournament() -> None:
+    import pandas as pd
+
+    fit = acbc_estimate.fit_hb(
+        _simulate(pool_size=60, n_tasks=20, n_respondents=6, seed=71),
+        attribute_levels=SPEC, n_iter=200, burn_in=100, thinning=2, n_chains=2, seed=71,
+    )
+    empty = pd.DataFrame(columns=[acbc_responses.STAGE_COL])
+    result = acbc_estimate.per_respondent_rlh_hb(empty, fit)
+    assert list(result.columns) == ["respondent", "rlh", "n_tasks"]
+    assert result.empty
+
+
+@pytest.mark.unit
 def test_hb_to_utilities_round_trip() -> None:
     df = _simulate(pool_size=60, n_tasks=20, n_respondents=8, seed=53)
     fit = acbc_estimate.fit_hb(

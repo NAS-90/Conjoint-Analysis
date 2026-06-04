@@ -1,0 +1,17 @@
+# Shared Streamlit configuration for the survey app (survey.py) and the
+# analysis dashboard (app.py). A single calm, professional light theme keeps
+# both surfaces consistent. `toolbarMode = "minimal"` hides the developer
+# "Deploy" button and menu so respondents see a clean page.
+
+[theme]
+primaryColor = "#4F46E5"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F5FB"
+textColor = "#1F2430"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false

@@ -27,13 +27,14 @@ from survey_views.navigation import (
     reset_stage,
     stage_answers,
 )
-from survey_views.spec_source import load_spec
+from survey_views.spec_source import attribute_display_name, load_spec
 from survey_views.state import (
     ATTRIBUTE_SELECTION_KEY,
     GUIDED_PROFILE_KEY,
     QUESTION_FLOW_KEY,
     RESPONDENT_KEY,
 )
+from survey_views.theme import apply_base_theme, safe_md
 
 FLOW_ALL = "Full questionnaire"
 FLOW_GUIDED = "Guided profile"
@@ -43,39 +44,38 @@ FLOW_CUSTOM = "Choose attributes"
 #: (``stage_answers("ratings")[attribute_name] = {level_code: rating}``).
 STAGE = "ratings"
 
+#: Guided "priority" profiles for the smartphone spec. Each value is a set of
+#: keywords matched (via :func:`_matches_profile`) against an attribute's name,
+#: description, prompt and level labels, so a respondent can rate only the
+#: features tied to what they care about most.
 GUIDED_PROFILES: dict[str, tuple[str, ...]] = {
     "Performance": (
-        "engine",
-        "injection",
-        "transmission",
-        "gears",
-        "power",
         "processor",
-        "speed",
+        "ram",
+        "memory",
+        "storage",
+        "chip",
+        "snapdragon",
+        "flagship",
     ),
-    "Ease of use": (
-        "transmission",
-        "shuttle",
-        "steering",
-        "control",
-        "interface",
-        "software",
-    ),
-    "Comfort and quality": (
-        "cabin",
-        "seat",
-        "screen",
-        "display",
+    "Photography & screen": (
         "camera",
-        "quality",
+        "mp",
+        "display",
+        "screen",
+        "in)",
     ),
-    "Range and endurance": (
-        "tank",
+    "Battery life": (
         "battery",
-        "range",
-        "fuel",
+        "mah",
         "capacity",
-        "runtime",
+    ),
+    "Value for money": (
+        "price",
+        "budget",
+        "mid-range",
+        "storage",
+        "card",
     ),
 }
 
@@ -171,7 +171,7 @@ def _attribute_step(spec: QuestionnaireSpec, attr: AttributeQuestion) -> Step:
             except (TypeError, ValueError):
                 default_index = None
             value = st.radio(
-                f"**{level.label}**  (`{level.code}`)",
+                f"**{safe_md(level.label)}**",
                 options=options,
                 index=default_index,
                 horizontal=True,
@@ -183,7 +183,11 @@ def _attribute_step(spec: QuestionnaireSpec, attr: AttributeQuestion) -> Step:
         record_answer(STAGE, attr.feature_name, ratings)
         return len(ratings) == len(attr.levels)
 
-    return Step(identifier=attr.feature_name, title=attr.feature_name, render=render)
+    return Step(
+        identifier=attr.feature_name,
+        title=attribute_display_name(attr.feature_name),
+        render=render,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -211,20 +215,15 @@ def _offer_download(spec: QuestionnaireSpec, answers: dict[str, int | None]) -> 
     frame = q.responses_from_answers([answers], spec, respondent_ids=[respondent])
     problems = q.validate_responses(frame, spec)
     if problems:
-        st.error("Response validation failed:")
-        for problem in problems:
-            st.write(f"- {problem}")
+        st.error("Sorry — we couldn't record your answers. Please try again.")
         return
-    st.success(
-        "Responses look valid. Download below and feed to "
-        "`python -m conjoint.estimate`."
-    )
-    st.dataframe(frame, width="stretch")
+    st.success("Thanks! Your answers have been recorded.")
     st.download_button(
-        "Download responses.csv",
+        "Send my responses to the researcher",
         data=frame.to_csv(index=False).encode("utf-8"),
-        file_name="responses.csv",
+        file_name=f"responses_{respondent}.csv",
         mime="text/csv",
+        type="primary",
     )
 
 
@@ -243,8 +242,9 @@ def _completed_attributes(attributes: tuple[AttributeQuestion, ...]) -> int:
 
 
 def render_questionnaire() -> None:
-    """Render the Part B-1 ratings page (single attribute per page)."""
-    st.title("Part B-1 — desirability ratings")
+    """Render the per-attribute rating page (single attribute per page)."""
+    apply_base_theme()
+    st.title("Rate each smartphone feature")
 
     spec = load_spec()
     if spec is None:
@@ -252,26 +252,19 @@ def render_questionnaire() -> None:
 
     active = spec.active_attributes
     if not active:
-        st.warning("This spec has no active Part B-1 rating attributes.")
+        st.warning("There are no questions to answer right now.")
         return
 
-    selected_attributes, flow_label = _select_attributes(active)
+    selected_attributes, _flow_label = _select_attributes(active)
     if not selected_attributes:
-        st.warning("Choose at least one attribute to render questions.")
+        st.warning("Please choose at least one feature to rate.")
         return
 
-    respondent = str(st.session_state.get(RESPONDENT_KEY, "") or "").strip() or "1"
     st.caption(
-        f"Respondent **{respondent}** · {flow_label} · "
-        f"{len(selected_attributes)}/{len(active)} attribute(s) shown · rating scale "
-        f"{spec.scale.min}–{spec.scale.max} (higher = more desirable)."
+        f"Rate each option from {spec.scale.min} (least desirable) to "
+        f"{spec.scale.max} (most desirable). {len(selected_attributes)} "
+        "features to rate."
     )
-    skipped = len(active) - len(selected_attributes)
-    if skipped:
-        st.info(
-            f"{skipped} attribute(s) are skipped for this flow; their response "
-            "columns stay blank in the downloaded CSV."
-        )
 
     steps = tuple(_attribute_step(spec, attr) for attr in selected_attributes)
 
@@ -286,7 +279,7 @@ def render_questionnaire() -> None:
             STAGE,
             steps,
             on_complete=on_complete,
-            progress_label="Attribute",
+            progress_label="Feature",
         )
 
     if st.session_state.get("survey_ratings_finished"):
@@ -294,11 +287,10 @@ def render_questionnaire() -> None:
         total = len(selected_attributes)
         if completed < total:
             st.warning(
-                f"{total - completed} attribute(s) not fully rated — those cells "
-                "stay blank in the CSV."
+                f"{total - completed} feature(s) were not fully rated."
             )
         _offer_download(spec, _flat_answers(spec, selected_attributes))
-        if st.button("Restart questionnaire"):
+        if st.button("Start over"):
             st.session_state["survey_ratings_finished"] = False
             reset_stage(STAGE)
             st.rerun()

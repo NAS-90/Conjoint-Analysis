@@ -1,17 +1,16 @@
-"""ACBC BYO route — single-page-per-attribute "pick your favourite" UI.
+"""Step 1 of the conjoint survey — pick the favourite level per feature.
 
-Renders one BYO question per page (one attribute → pick a preferred
-level) and assembles the anchor :class:`Profile` consumed by the
-Screener route (Phase 3).
+Respondent-facing route. Internally this is the ACBC Build-Your-Own (BYO)
+stage; the UI deliberately hides that terminology — respondents see
+"Step 1 · Build your ideal" and a sequence of one-question pages.
 
 Behaviour:
 
-1. Load the questionnaire spec, surface a list of BYO questions
+1. Load the questionnaire spec, surface one question per active attribute
    (:func:`conjoint.acbc.byo.byo_questions`).
 2. Drive the sequential controller with one Step per question.
-3. On Finish: derive the anchor profile and persist it in session
-   state under :data:`ACBC_ANCHOR_KEY` so the Screener page picks it
-   up.
+3. On Finish: derive the anchor profile and persist it in session state
+   under :data:`ACBC_ANCHOR_KEY` so Step 2 (Screener) can use it.
 """
 
 from __future__ import annotations
@@ -29,11 +28,17 @@ from survey_views.navigation import (
     reset_stage,
     stage_answers,
 )
-from survey_views.spec_source import load_spec
+from survey_views.spec_source import (
+    attribute_display_name,
+    format_level,
+    level_label_map,
+    load_spec,
+)
 from survey_views.state import (
     ACBC_SCREENER_PAGE_KEY,
     RESPONDENT_KEY,
 )
+from survey_views.theme import apply_base_theme, flow_header, safe_md
 
 STAGE = "acbc_byo"
 
@@ -59,9 +64,9 @@ def _byo_step(question: ByoQuestion) -> Step:
         )
 
         chosen = st.radio(
-            "Preferred level:",
+            "Choose one:",
             options=codes,
-            format_func=lambda code: labels.get(code, code),
+            format_func=lambda code: safe_md(labels.get(code, code)),
             index=default_index,
             horizontal=False,
             key=f"acbc_byo__{question.attribute}",
@@ -73,7 +78,7 @@ def _byo_step(question: ByoQuestion) -> Step:
 
     return Step(
         identifier=question.attribute,
-        title=f"Preferred {question.attribute}",
+        title=attribute_display_name(question.attribute),
         render=render,
     )
 
@@ -91,22 +96,27 @@ def _persist_anchor() -> Profile | None:
 
 
 def render_byo() -> None:
-    """Render the ACBC BYO route (one attribute per page)."""
-    st.title("ACBC BYO — pick your favourite level per feature")
+    """Render Step 1 (one question per attribute)."""
+    apply_base_theme()
 
     spec = load_spec()
     if spec is None:
         return
     questions = acbc_byo.byo_questions(spec)
     if not questions:
-        st.warning("This spec has no active Part B-1 attributes to BYO.")
+        st.warning("There are no questions to answer right now.")
         return
 
-    respondent = str(st.session_state.get(RESPONDENT_KEY, "") or "").strip() or "1"
-    st.caption(
-        f"Respondent **{respondent}** · {len(questions)} attributes · "
-        "your choices seed the Screener pool."
+    flow_header(
+        1,
+        3,
+        "Build your ideal phone",
+        "Pick the option you would most prefer for each feature.",
     )
+
+    respondent = str(st.session_state.get(RESPONDENT_KEY, "") or "").strip()
+    greeting = f"Hi **{respondent}** — there " if respondent else "There "
+    st.caption(f"{greeting}are {len(questions)} quick questions, one feature at a time.")
 
     st.session_state.setdefault(ACBC_BYO_FINISHED_KEY, False)
 
@@ -117,30 +127,35 @@ def render_byo() -> None:
     if not st.session_state[ACBC_BYO_FINISHED_KEY]:
         steps = tuple(_byo_step(q) for q in questions)
         render_sequence(
-            STAGE, steps, on_complete=on_complete, progress_label="Attribute"
+            STAGE, steps, on_complete=on_complete, progress_label="Question"
         )
-        return
 
-    anchor = st.session_state.get(ACBC_ANCHOR_KEY)
-    if anchor is None:
-        anchor = _persist_anchor()
+    if st.session_state[ACBC_BYO_FINISHED_KEY]:
+        anchor = st.session_state.get(ACBC_ANCHOR_KEY)
+        if anchor is None:
+            anchor = _persist_anchor()
 
-    st.success("BYO recorded — here is your ideal configuration.")
-    if anchor is not None:
-        for attribute, code in anchor.levels:
-            st.markdown(f"- **{attribute}**: {code}")
+        st.success("Thanks! Here is the ideal phone you described.")
+        if anchor is not None:
+            labels = level_label_map(spec)
+            with st.container(border=True):
+                for attribute, code in anchor.levels:
+                    st.markdown(
+                        f"- **{attribute_display_name(attribute)}**: "
+                        f"{format_level(labels, attribute, code)}"
+                    )
 
-    screener_page = st.session_state.get(ACBC_SCREENER_PAGE_KEY)
-    cols = st.columns(2)
-    with cols[0]:
-        if screener_page is not None and st.button("Continue to Screener →", type="primary"):
-            st.switch_page(screener_page)
-    with cols[1]:
-        if st.button("Restart BYO"):
-            st.session_state[ACBC_BYO_FINISHED_KEY] = False
-            st.session_state.pop(ACBC_ANCHOR_KEY, None)
-            reset_stage(STAGE)
-            st.rerun()
+        screener_page = st.session_state.get(ACBC_SCREENER_PAGE_KEY)
+        cols = st.columns(2)
+        with cols[0]:
+            if screener_page is not None and st.button("Continue →", type="primary"):
+                st.switch_page(screener_page)
+        with cols[1]:
+            if st.button("Start over"):
+                st.session_state[ACBC_BYO_FINISHED_KEY] = False
+                st.session_state.pop(ACBC_ANCHOR_KEY, None)
+                reset_stage(STAGE)
+                st.rerun()
 
 
 if __name__ == "__main__":  # pragma: no cover - manual ``streamlit run``

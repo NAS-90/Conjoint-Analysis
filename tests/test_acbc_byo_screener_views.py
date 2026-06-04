@@ -1,13 +1,12 @@
-"""Streamlit AppTest coverage for the BYO + Screener views.
+"""Streamlit AppTest coverage for the Step-1 (BYO) + Step-2 (Screener) views.
 
 Validates that:
 
-* the BYO view renders one attribute per page and only enables Next
-  after the respondent picks a level;
-* finishing BYO persists an anchor profile in session state;
-* the Screener view requires a BYO anchor and renders one profile per
-  page;
-* the router exposes every ACBC route.
+* Step 1 renders one attribute per page and only enables Next after the
+  respondent picks a level;
+* finishing Step 1 persists an anchor profile in session state;
+* Step 2 requires an anchor and renders one configuration per page;
+* the router exposes every survey route.
 """
 
 from __future__ import annotations
@@ -51,6 +50,14 @@ def _next_button(at: AppTest):
     return next(b for b in at.button if b.label in {"Next →", "Finish"})
 
 
+def _first_active_attribute_name() -> str:
+    from conjoint import questionnaire as q
+    from survey_views.spec_source import DEFAULT_SPEC, attribute_display_name
+
+    spec = q.read_spec(DEFAULT_SPEC)
+    return attribute_display_name(spec.active_attributes[0].feature_name)
+
+
 @pytest.mark.integration
 def test_router_exposes_every_acbc_route() -> None:
     at = AppTest.from_file(str(SURVEY_APP)).run()
@@ -62,7 +69,8 @@ def test_byo_renders_one_attribute_per_page() -> None:
     at = _byo_app().run()
     assert not at.exception
     subheaders = [s.value for s in at.subheader]
-    assert any("Preferred engine" in title for title in subheaders)
+    expected = _first_active_attribute_name()
+    assert any(expected in title for title in subheaders)
     # Exactly one BYO radio per page.
     byo_radios = [r for r in at.radio if r.key and r.key.startswith("acbc_byo__")]
     assert len(byo_radios) == 1
@@ -82,7 +90,7 @@ def test_screener_without_anchor_shows_warning() -> None:
     at = _screener_app().run()
     assert not at.exception
     warnings = [w.value for w in at.warning]
-    assert any("BYO anchor" in msg for msg in warnings)
+    assert any("Step 1" in msg for msg in warnings)
 
 
 @pytest.mark.integration
@@ -92,12 +100,13 @@ def test_screener_with_anchor_renders_one_profile() -> None:
         "import sys\n"
         f"sys.path.insert(0, {str(REPO_ROOT)!r})\n"
         "import streamlit as st\n"
+        "from conjoint import questionnaire as q\n"
         "from conjoint.acbc.design import Profile\n"
         "from survey_views.acbc_byo import ACBC_ANCHOR_KEY\n"
-        "anchor = Profile(levels=(\n"
-        "    ('engine', 'basic'), ('injection', 'mechanical'),\n"
-        "    ('transmission', 'not_synchronized'), ('shuttle', 'no_shuttle'),\n"
-        "    ('gears', '2_speeds'), ('cabin', 'no_cabin'), ('tank', 'small_tank'),\n"
+        "from survey_views.spec_source import DEFAULT_SPEC\n"
+        "spec = q.read_spec(DEFAULT_SPEC)\n"
+        "anchor = Profile(levels=tuple(\n"
+        "    (attr.feature_name, attr.levels[0].code) for attr in spec.active_attributes\n"
         "))\n"
         "st.session_state[ACBC_ANCHOR_KEY] = anchor\n"
         "from survey_views.acbc_screener import render_screener\n"
@@ -106,6 +115,6 @@ def test_screener_with_anchor_renders_one_profile() -> None:
     at = AppTest.from_string(script).run()
     assert not at.exception
     subheaders = [s.value for s in at.subheader]
-    assert any("Profile 1" in title for title in subheaders)
+    assert any("Option 1" in title for title in subheaders)
     radios = [r for r in at.radio if r.key and r.key.startswith("acbc_screener__profile__")]
     assert len(radios) == 1

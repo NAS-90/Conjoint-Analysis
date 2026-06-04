@@ -23,8 +23,9 @@ design code can be exercised in tests without a workbook.
 
 from __future__ import annotations
 
+import logging
 import random
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
@@ -32,8 +33,14 @@ import numpy as np
 
 from conjoint.questionnaire import QuestionnaireSpec
 
+logger = logging.getLogger(__name__)
+
 #: Mapping ``{attribute: (level_code, ...)}``.
 AttributeLevels = Mapping[str, Sequence[str]]
+
+#: One prohibited pair: two ``(attribute, level_code)`` cells that must never
+#: co-occur inside the same profile (Sawtooth "prohibited combinations", §9.1).
+ProhibitedPair = tuple[tuple[str, str], tuple[str, str]]
 
 
 @dataclass(frozen=True)
@@ -87,6 +94,64 @@ def _coerce_attribute_levels(
     return result
 
 
+def _normalise_prohibited(
+    prohibited: Sequence[ProhibitedPair] | None,
+    attribute_levels: "OrderedDict[str, tuple[str, ...]]",
+) -> tuple[ProhibitedPair, ...]:
+    """Validate prohibited pairs against the known attribute/level universe.
+
+    Each pair is ``((attr_a, level_a), (attr_b, level_b))`` and must reference
+    two *different* attributes whose levels exist in ``attribute_levels``;
+    otherwise a :class:`ValueError` is raised (fail fast at the boundary).
+    """
+    if not prohibited:
+        return ()
+    normalised: list[ProhibitedPair] = []
+    for pair in prohibited:
+        if len(pair) != 2:
+            raise ValueError(f"prohibited entry must be a 2-tuple of cells, got {pair!r}")
+        (attr_a, level_a), (attr_b, level_b) = pair
+        if attr_a == attr_b:
+            raise ValueError(
+                f"prohibited pair must span two different attributes (got {attr_a!r} twice)"
+            )
+        for attribute, level in ((attr_a, level_a), (attr_b, level_b)):
+            if attribute not in attribute_levels:
+                raise ValueError(f"prohibited pair references unknown attribute {attribute!r}")
+            if level not in attribute_levels[attribute]:
+                raise ValueError(
+                    f"prohibited pair references unknown level {level!r} of {attribute!r}"
+                )
+        normalised.append(((attr_a, level_a), (attr_b, level_b)))
+    return tuple(normalised)
+
+
+def _profile_violates(
+    row_levels: Mapping[str, str], prohibited: Sequence[ProhibitedPair]
+) -> bool:
+    """Return whether a single ``{attribute: level}`` row hits a prohibited pair."""
+    for (attr_a, level_a), (attr_b, level_b) in prohibited:
+        if row_levels.get(attr_a) == level_a and row_levels.get(attr_b) == level_b:
+            return True
+    return False
+
+
+def _count_violations(
+    columns: "OrderedDict[str, list[str]]", prohibited: Sequence[ProhibitedPair]
+) -> int:
+    """Count profiles (rows) that contain at least one prohibited pair."""
+    if not prohibited:
+        return 0
+    keys = list(columns.keys())
+    n_rows = len(next(iter(columns.values()))) if columns else 0
+    total = 0
+    for index in range(n_rows):
+        row = {attribute: columns[attribute][index] for attribute in keys}
+        if _profile_violates(row, prohibited):
+            total += 1
+    return total
+
+
 # ---------------------------------------------------------------------------
 # Profile generation — balanced sampling
 # ---------------------------------------------------------------------------
@@ -116,6 +181,7 @@ def generate_profiles(
     *,
     seed: int | None = None,
     swap_iterations: int = 1_000,
+    prohibited: Sequence[ProhibitedPair] | None = None,
 ) -> tuple[Profile, ...]:
     """Generate ``n_profiles`` near-balanced profiles.
 
@@ -127,33 +193,64 @@ def generate_profiles(
     ``(a₂, b₁)`` with low count, swapping the ``b`` slot in two rows
     flattens the joint distribution while preserving each attribute's
     own level balance.
+
+    ``prohibited`` lists ``((attr_a, level_a), (attr_b, level_b))`` pairs
+    that must never co-occur (Sawtooth "prohibited combinations", §9.1).
+    The 2-opt minimises violations *before* overlap (lexicographic score),
+    a deterministic repair pass clears any residue, and — as a final safety
+    net — any profile that still violates a constraint is dropped (logged),
+    so the returned pool can be shorter than ``n_profiles`` only when the
+    constraints are jointly unsatisfiable for the requested balance.
     """
     if n_profiles <= 0:
         raise ValueError(f"n_profiles must be positive (got {n_profiles})")
     attribute_levels = _coerce_attribute_levels(source)
+    prohibited_pairs = _normalise_prohibited(prohibited, attribute_levels)
     rng = random.Random(seed)
 
     columns: "OrderedDict[str, list[str]]" = OrderedDict()
     for attribute, levels in attribute_levels.items():
         columns[attribute] = _balanced_sequence(levels, n_profiles, rng)
 
-    columns = _minimise_pairwise_overlap(columns, rng, swap_iterations)
+    columns = _minimise_pairwise_overlap(columns, rng, swap_iterations, prohibited_pairs)
+    if prohibited_pairs:
+        columns = _repair_prohibited(columns, prohibited_pairs, rng)
 
     profiles: list[Profile] = []
     for index in range(n_profiles):
         levels = tuple((attribute, columns[attribute][index]) for attribute in columns)
-        profiles.append(Profile(levels=levels))
+        profile = Profile(levels=levels)
+        if prohibited_pairs and _profile_violates(profile.as_dict, prohibited_pairs):
+            logger.warning(
+                "Dropping profile %d — could not satisfy prohibited combinations: %s",
+                index, profile.levels,
+            )
+            continue
+        profiles.append(profile)
     return tuple(profiles)
 
 
 def _pair_imbalance(left: Sequence[str], right: Sequence[str]) -> int:
-    """Sum of squared deviations of ``(left, right)`` pair counts from mean."""
-    counts: dict[tuple[str, str], int] = defaultdict(int)
+    """Sum of squared deviations of every ``(left, right)`` level pair from uniform.
+
+    The deviation is measured over the **full ``K_a × K_b`` grid** of level
+    pairs — including pairs that never co-occur (count ``0``). The previous
+    version divided by the number of *observed* pairs and so silently ignored
+    zero-overlap combinations; a design where two levels never appear together
+    would have looked perfectly balanced. Counting the empty cells makes the
+    metric a faithful "minimal overlap" objective.
+    """
+    left_levels = sorted(set(left))
+    right_levels = sorted(set(right))
+    if not left_levels or not right_levels:
+        return 0
+    counts: dict[tuple[str, str], int] = {
+        (a, b): 0 for a in left_levels for b in right_levels
+    }
     for a, b in zip(left, right):
         counts[(a, b)] += 1
-    if not counts:
-        return 0
-    mean = sum(counts.values()) / len(counts)
+    n_cells = len(counts)  # K_a * K_b, including never-observed level pairs
+    mean = sum(counts.values()) / n_cells
     return int(round(sum((c - mean) ** 2 for c in counts.values())))
 
 
@@ -167,16 +264,31 @@ def _total_pair_imbalance(columns: "OrderedDict[str, list[str]]") -> int:
     return total
 
 
+def _design_score(
+    columns: "OrderedDict[str, list[str]]", prohibited: Sequence[ProhibitedPair]
+) -> tuple[int, int]:
+    """Lexicographic design score ``(prohibited_violations, overlap_imbalance)``.
+
+    Comparing these tuples drives the 2-opt to eliminate prohibited
+    combinations *first* and only then flatten overlap — no penalty weight to
+    tune. With ``prohibited`` empty the first element is always ``0`` so the
+    behaviour collapses to pure overlap minimisation.
+    """
+    return _count_violations(columns, prohibited), _total_pair_imbalance(columns)
+
+
 def _minimise_pairwise_overlap(
     columns: "OrderedDict[str, list[str]]",
     rng: random.Random,
     iterations: int,
+    prohibited: Sequence[ProhibitedPair] = (),
 ) -> "OrderedDict[str, list[str]]":
     """2-opt swap heuristic — swap one attribute's values across two rows.
 
     A swap preserves the per-attribute level balance (the swapped values
     are within the same column) while changing the joint distributions.
-    We accept any swap that strictly reduces the global pair-imbalance.
+    We accept any swap that strictly reduces the lexicographic
+    :func:`_design_score` (prohibited violations first, then overlap).
     """
     if len(columns) < 2 or iterations <= 0:
         return columns
@@ -186,7 +298,7 @@ def _minimise_pairwise_overlap(
     if n_rows < 2:
         return columns
 
-    best_score = _total_pair_imbalance(columns)
+    best_score = _design_score(columns, prohibited)
     for _ in range(iterations):
         attribute = keys[rng.randrange(len(keys))]
         col = columns[attribute]
@@ -195,11 +307,53 @@ def _minimise_pairwise_overlap(
         if i == j or col[i] == col[j]:
             continue
         col[i], col[j] = col[j], col[i]
-        new_score = _total_pair_imbalance(columns)
+        new_score = _design_score(columns, prohibited)
         if new_score < best_score:
             best_score = new_score
         else:
             col[i], col[j] = col[j], col[i]  # revert
+    return columns
+
+
+def _repair_prohibited(
+    columns: "OrderedDict[str, list[str]]",
+    prohibited: Sequence[ProhibitedPair],
+    rng: random.Random,
+) -> "OrderedDict[str, list[str]]":
+    """Clear residual prohibited combinations via balance-preserving swaps.
+
+    For each still-violating row we try swapping one of the offending
+    attributes' value with another row so that *both* rows end up valid. Swaps
+    stay within a single column, so per-attribute level balance is untouched.
+    Rows that cannot be repaired are left for the caller to drop.
+    """
+    keys = list(columns.keys())
+    n_rows = len(next(iter(columns.values()))) if columns else 0
+    offending_attrs = sorted({attr for pair in prohibited for attr, _level in pair})
+
+    for index in range(n_rows):
+        row = {attribute: columns[attribute][index] for attribute in keys}
+        if not _profile_violates(row, prohibited):
+            continue
+        repaired = False
+        for attribute in offending_attrs:
+            order = list(range(n_rows))
+            rng.shuffle(order)
+            col = columns[attribute]
+            for other in order:
+                if other == index or col[other] == col[index]:
+                    continue
+                col[index], col[other] = col[other], col[index]
+                row_i = {a: columns[a][index] for a in keys}
+                row_o = {a: columns[a][other] for a in keys}
+                if not _profile_violates(row_i, prohibited) and not _profile_violates(
+                    row_o, prohibited
+                ):
+                    repaired = True
+                    break
+                col[index], col[other] = col[other], col[index]  # revert
+            if repaired:
+                break
     return columns
 
 

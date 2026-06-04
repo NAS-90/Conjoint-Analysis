@@ -161,6 +161,59 @@ def test_beta_to_level_utilities_recovers_dropped_level() -> None:
         assert pytest.approx(dropped, rel=1e-9, abs=1e-9) == -survivors
 
 
+# ---------------------------------------------------------------------------
+# §9.8 — utility rescaling
+# ---------------------------------------------------------------------------
+def _toy_utilities() -> "OrderedDict[str, OrderedDict[str, float]]":
+    # price range 4, os range 1 → importance ratio 4:1.
+    return OrderedDict(
+        price=OrderedDict(budget=2.0, mid=0.0, premium=-2.0),
+        os=OrderedDict(android=0.5, ios=-0.5),
+    )
+
+
+@pytest.mark.unit
+def test_zero_center_utilities_sum_to_zero() -> None:
+    shifted = OrderedDict(
+        price=OrderedDict(budget=12.0, mid=10.0, premium=8.0),  # mean 10
+    )
+    centred = acbc_estimate.zero_center_utilities(shifted)
+    assert pytest.approx(sum(centred["price"].values()), abs=1e-12) == 0.0
+    # Original is not mutated.
+    assert shifted["price"]["budget"] == 12.0
+
+
+@pytest.mark.unit
+def test_zero_centered_diffs_mean_range_is_target_and_preserves_importance() -> None:
+    rescaled = acbc_estimate.rescale_zero_centered_diffs(_toy_utilities(), target_range=100.0)
+    ranges = {attr: max(v.values()) - min(v.values()) for attr, v in rescaled.items()}
+    # Mean attribute range == target.
+    assert pytest.approx(sum(ranges.values()) / len(ranges), rel=1e-9) == 100.0
+    # Relative importance (range ratio) is preserved by the single global factor.
+    assert pytest.approx(ranges["price"] / ranges["os"], rel=1e-9) == 4.0
+
+
+@pytest.mark.unit
+def test_normalize_utility_ranges_maps_to_zero_scale_per_attribute() -> None:
+    rescaled = acbc_estimate.normalize_utility_ranges(_toy_utilities(), scale=100.0)
+    for per_level in rescaled.values():
+        assert pytest.approx(min(per_level.values()), abs=1e-12) == 0.0
+        assert pytest.approx(max(per_level.values()), abs=1e-12) == 100.0
+    # Flat attribute collapses to all-zero rather than dividing by zero.
+    flat = OrderedDict(x=OrderedDict(a=1.0, b=1.0))
+    assert list(acbc_estimate.normalize_utility_ranges(flat)["x"].values()) == [0.0, 0.0]
+
+
+@pytest.mark.unit
+def test_rescale_utilities_dispatch_and_validation() -> None:
+    utils = _toy_utilities()
+    assert acbc_estimate.rescale_utilities(
+        utils, method=acbc_estimate.RESCALE_NORMALIZED_RANGES
+    ) == acbc_estimate.normalize_utility_ranges(utils)
+    with pytest.raises(ValueError):
+        acbc_estimate.rescale_utilities(utils, method="not-a-method")
+
+
 @pytest.mark.integration
 def test_cli_writes_importance_csv(tmp_path: Path) -> None:
     df = _simulate(pool_size=60, n_tasks=20, n_respondents=40, seed=31)

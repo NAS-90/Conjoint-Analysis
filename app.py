@@ -26,6 +26,22 @@ from conjoint.io import ATTRIBUTE_COL, RELATIVE_IMPORTANCE_COL
 from validation.validate_conjoint import NEIGHBOR_K, count_differing
 
 st.set_page_config(page_title="Strategic Product Optimizer", layout="wide")
+
+# --- TOP-LEVEL MODULE SWITCH ---
+# The portfolio/distance analysis is the default. The ACBC quality & diagnostics
+# page is a separate, self-contained view (renders then st.stop()s so the rest of
+# this script does not run for that mode).
+_module = st.sidebar.radio(
+    "分析模块 / Module",
+    ["产品组合分析", "ACBC 数据质量与诊断"],
+    help="切换到 ACBC 数据质量与模型诊断页(§8 数据清洗 + §9.10 诊断)。",
+)
+if _module == "ACBC 数据质量与诊断":
+    from dashboard.quality_diagnostics import render_quality_diagnostics
+
+    render_quality_diagnostics()
+    st.stop()
+
 st.title("Product Portfolio Analysis")
 
 # Sidebar for category selection. "Conjoint Demo" carries real conjoint

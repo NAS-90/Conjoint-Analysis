@@ -43,7 +43,7 @@ from survey_views.acbc_byo import render_byo  # noqa: E402
 from survey_views.acbc_screener import render_screener  # noqa: E402
 from survey_views.acbc_summary import render_summary  # noqa: E402
 from survey_views.acbc_tournament import render_tournament  # noqa: E402
-from survey_views.intro import render_intro  # noqa: E402
+from survey_views.intro import MODE_RATING, render_intro  # noqa: E402
 from survey_views.ratings import render_questionnaire  # noqa: E402
 from survey_views.state import (  # noqa: E402
     ACBC_BYO_PAGE_KEY,
@@ -51,33 +51,75 @@ from survey_views.state import (  # noqa: E402
     ACBC_SUMMARY_PAGE_KEY,
     ACBC_TOURNAMENT_PAGE_KEY,
     QUESTIONNAIRE_PAGE_KEY,
+    SURVEY_MODE_KEY,
 )
+
+
+def flow_pages(
+    mode: str | None,
+    *,
+    intro,
+    questionnaire,
+    byo,
+    screener,
+    tournament,
+    summary,
+) -> list:
+    """Ordered sidebar pages for the chosen survey ``mode`` (gating logic).
+
+    Welcome is always first. The rating method shows only the ratings page;
+    every other mode (including the unset default) shows the ACBC flow. Kept as
+    a pure function so the gating can be unit-tested without a running app.
+    """
+    if mode == MODE_RATING:
+        return [intro, questionnaire]
+    return [intro, byo, screener, tournament, summary]
 
 
 def main() -> None:
     """Configure the page and run the survey navigation router."""
-    st.set_page_config(page_title="Conjoint survey", page_icon="📝", layout="centered")
+    st.set_page_config(
+        page_title="Smartphone preferences survey",
+        page_icon=":material/smartphone:",
+        layout="centered",
+    )
 
     intro_page = st.Page(
-        render_intro, title="Welcome", icon="👋", url_path="welcome", default=True
+        render_intro,
+        title="Welcome",
+        icon=":material/home:",
+        url_path="welcome",
+        default=True,
     )
     questionnaire_page = st.Page(
-        render_questionnaire, title="Part B-1 ratings", icon="📝", url_path="ratings"
+        render_questionnaire,
+        title="Rate each option",
+        icon=":material/star:",
+        url_path="ratings",
     )
     byo_page = st.Page(
-        render_byo, title="ACBC BYO", icon="🧩", url_path="acbc-byo"
+        render_byo,
+        title="Step 1 · Your ideal",
+        icon=":material/tune:",
+        url_path="acbc-byo",
     )
     screener_page = st.Page(
-        render_screener, title="ACBC Screener", icon="🔎", url_path="acbc-screener"
+        render_screener,
+        title="Step 2 · Would you consider these?",
+        icon=":material/checklist:",
+        url_path="acbc-screener",
     )
     tournament_page = st.Page(
         render_tournament,
-        title="ACBC Tournament",
-        icon="🏆",
+        title="Step 3 · Final choice",
+        icon=":material/balance:",
         url_path="acbc-tournament",
     )
     summary_page = st.Page(
-        render_summary, title="ACBC Summary", icon="📦", url_path="acbc-summary"
+        render_summary,
+        title="Thank you",
+        icon=":material/check_circle:",
+        url_path="acbc-summary",
     )
 
     # Stash page handles so cross-page navigation buttons can use switch_page().
@@ -87,18 +129,22 @@ def main() -> None:
     st.session_state[ACBC_TOURNAMENT_PAGE_KEY] = tournament_page
     st.session_state[ACBC_SUMMARY_PAGE_KEY] = summary_page
 
-    st.navigation(
-        {
-            "Survey": [
-                intro_page,
-                questionnaire_page,
-                byo_page,
-                screener_page,
-                tournament_page,
-                summary_page,
-            ]
-        }
-    ).run()
+    # Gate the sidebar to the chosen method so respondents only ever see the
+    # flow they picked on Welcome (no out-of-order jumps, no clutter). The mode
+    # is set by the Welcome radio, which reruns the script before "Start" is
+    # pressed, so st.switch_page always targets a page in the current nav.
+    pages = flow_pages(
+        st.session_state.get(SURVEY_MODE_KEY),
+        intro=intro_page,
+        questionnaire=questionnaire_page,
+        byo=byo_page,
+        screener=screener_page,
+        tournament=tournament_page,
+        summary=summary_page,
+    )
+
+    st.navigation({"Survey": pages}).run()
 
 
-main()
+if __name__ == "__main__":
+    main()
