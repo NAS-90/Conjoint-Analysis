@@ -18,11 +18,13 @@ from conjoint.acbc.design import Profile, attribute_levels_from_spec
 from survey_views.b5_calibration import CALIBRATION_CONCEPTS_KEY
 from survey_views.b5_calibration import STAGE as CALIBRATION_STAGE
 from survey_views.navigation import peek_stage
-from survey_views.part_a_background import PROFILE_QUESTIONS
 from survey_views.part_a_background import STAGE as BACKGROUND_STAGE
-from survey_views.part_c_wtp import WTP_FEATURES
 from survey_views.part_c_wtp import STAGE as WTP_STAGE
 from survey_views.ratings import STAGE as RATINGS_STAGE
+from survey_views.section_source import (
+    load_background_questions,
+    load_wtp_features,
+)
 from survey_views.spec_source import (
     attribute_display_name,
     format_level,
@@ -41,7 +43,7 @@ from survey_views.theme import apply_base_theme
 def _background_frame(respondent: str, attribute_levels) -> pd.DataFrame | None:
     answers = peek_stage(BACKGROUND_STAGE)
     records = []
-    for task_id, question in enumerate(PROFILE_QUESTIONS, start=1):
+    for task_id, question in enumerate(load_background_questions(), start=1):
         value = answers.get(question.identifier)
         if value in (None, "", []):
             continue
@@ -124,7 +126,7 @@ def _calibration_frame(respondent: str, attribute_levels) -> pd.DataFrame | None
 def _wtp_frame(respondent: str, attribute_levels) -> pd.DataFrame | None:
     answers = peek_stage(WTP_STAGE)
     records = []
-    for task_id, feature in enumerate(WTP_FEATURES, start=1):
+    for task_id, feature in enumerate(load_wtp_features(), start=1):
         answer = answers.get(feature.identifier)
         if answer in (None, ""):
             continue

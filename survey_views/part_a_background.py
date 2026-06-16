@@ -12,8 +12,6 @@ Finish the flow advances to B0 (feature explanation).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import streamlit as st
 
 from survey_views.navigation import (
@@ -23,69 +21,21 @@ from survey_views.navigation import (
     record_answer,
     render_sequence,
 )
+from survey_views.section_source import (
+    DEFAULT_PROFILE_QUESTIONS,
+    ProfileQuestion,
+    load_background_questions,
+)
 from survey_views.state import B0_PAGE_KEY
 from survey_views.theme import apply_base_theme, flow_header
 
 #: Stage identifier under which Part A answers are stored.
 STAGE = "background"
 
-
-@dataclass(frozen=True)
-class ProfileQuestion:
-    """One Part A profiling question."""
-
-    identifier: str
-    prompt: str
-    options: tuple[str, ...]
-    multi: bool = False
-    help: str = ""
-
-
-#: The Part A question bank (smartphone reframing of the reference design).
-PROFILE_QUESTIONS: tuple[ProfileQuestion, ...] = (
-    ProfileQuestion(
-        identifier="purchase_timing",
-        prompt="When are you most likely to buy your next smartphone?",
-        options=("Within 3 months", "3–12 months", "More than a year", "No plans yet"),
-    ),
-    ProfileQuestion(
-        identifier="current_brand",
-        prompt="Which brand is your current phone?",
-        options=(
-            "Apple",
-            "Samsung",
-            "Xiaomi",
-            "Huawei",
-            "Google",
-            "Another brand",
-            "I don't have one",
-        ),
-    ),
-    ProfileQuestion(
-        identifier="budget",
-        prompt="Roughly what budget do you have in mind?",
-        options=("Under $300", "$300 – $700", "Over $700", "Not sure yet"),
-    ),
-    ProfileQuestion(
-        identifier="usage",
-        prompt="What do you mainly use your phone for?",
-        options=(
-            "Calls & messaging",
-            "Social media",
-            "Photography",
-            "Gaming",
-            "Work & productivity",
-            "Streaming video",
-        ),
-        multi=True,
-        help="Choose all that apply.",
-    ),
-    ProfileQuestion(
-        identifier="top_factor",
-        prompt="What matters most to you when choosing a phone?",
-        options=("Price", "Performance", "Camera", "Battery life", "Brand", "Screen"),
-    ),
-)
+#: Built-in default question bank (used when ``survey_questions.json`` is absent).
+#: Re-exported here for back-compat; the live questions come from
+#: :func:`survey_views.section_source.load_background_questions`.
+PROFILE_QUESTIONS: tuple[ProfileQuestion, ...] = DEFAULT_PROFILE_QUESTIONS
 
 
 def _question_step(question: ProfileQuestion) -> Step:
@@ -133,7 +83,7 @@ def render_background() -> None:
         "This helps us understand who is taking part. There are no right answers.",
     )
 
-    steps = tuple(_question_step(q) for q in PROFILE_QUESTIONS)
+    steps = tuple(_question_step(q) for q in load_background_questions())
 
     def on_complete() -> None:
         advance_to(B0_PAGE_KEY)
