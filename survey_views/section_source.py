@@ -1,36 +1,57 @@
 """Product-agnostic source for the non-attribute survey sections (A & C).
 
-The attribute-based sections (B0/B1/B2/B4/B5) are already table-driven: they read
-the generated ``questionnaire_spec.json``. Part A (background profiling) and Part
-C (willingness-to-pay) are *not* product features, so they live in a sibling
-``survey_questions.json`` — one per product — authored from a ``Survey_questions``
-Excel sheet (see :mod:`conjoint.generate_survey_questions`).
+The attribute-based sections (B0/B1/B2/B4/B5) read the generated
+``questionnaire_spec.json``. Part A (background profiling) and Part C
+(willingness-to-pay) are *not* product features, so they are authored in a
+``Survey_questions`` sheet of a per-product workbook and read **directly from
+that Excel file at runtime** — no intermediate JSON artifact.
 
-This module is the thin runtime adapter:
+Sheet schema (one row per question; blank rows ignored):
 
-* defines the immutable :class:`ProfileQuestion` / :class:`WtpFeature` types and
-  the built-in defaults (the smartphone questions, used as a fallback);
-* loads ``survey_questions.json`` if present and valid, else falls back to the
-  defaults — so a product with no questions file still gets a working survey.
+==========  ===============================================================
+column      meaning
+==========  ===============================================================
+section     ``A`` (background) / ``C`` (WTP feature) / ``bands`` (amount band)
+id          stable identifier / band code (e.g. ``budget``, ``up_to_50``)
+prompt      question text (A), upgrade label (C), or band label (bands)
+input_type  ``single`` or ``multi`` (Part A only; ignored elsewhere)
+options     ``;``-separated choices (Part A only)
+help        optional caption (Part A only)
+==========  ===============================================================
 
-Loading is *fail-soft*: a missing or malformed file logs a warning and returns
-the defaults rather than crashing the respondent-facing app. Per-section: if the
-file omits ``background`` or ``wtp``, that section falls back on its own.
+Workbook resolution (first that exists wins): an explicit path argument, the
+``SURVEY_WORKBOOK`` env var, else the conventional ``survey_questions.xlsx`` next
+to the spec. Loading is *fail-soft*: a missing/unreadable file, a missing sheet
+or an invalid section logs a warning and falls back to the built-in defaults —
+so the respondent-facing app never crashes, and a product with no questions
+workbook still gets a working survey.
 """
 
 from __future__ import annotations
 
-import json
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
+
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 #: Repo root (this file lives in ``<root>/survey_views/``).
 ROOT = Path(__file__).resolve().parent.parent
-#: Sibling of ``questionnaire_spec.json`` holding the Part A / Part C questions.
-DEFAULT_QUESTIONS_PATH = ROOT / "survey_questions.json"
+#: Conventional per-product workbook holding the ``Survey_questions`` sheet.
+DEFAULT_WORKBOOK = ROOT / "survey_questions.xlsx"
+#: Sheet name read for Part A / Part C.
+SHEET = "Survey_questions"
+
+#: Accepted ``section`` aliases → canonical kind.
+_BACKGROUND = {"a", "a_general", "background", "profiling"}
+_WTP = {"c", "c_wtp", "wtp", "surcharge"}
+_BANDS = {"band", "bands", "amount", "amount_band", "amount_bands"}
+
+#: Exceptions that mean "use the defaults" (missing file/sheet, bad data, no engine).
+_FALLBACK_ERRORS = (OSError, ValueError, KeyError, ImportError)
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +77,7 @@ class WtpFeature:
 
 
 # ---------------------------------------------------------------------------
-# Built-in defaults (smartphone) — also the fallback when no file is present
+# Built-in defaults (smartphone) — also the fallback when no workbook is present
 # ---------------------------------------------------------------------------
 DEFAULT_PROFILE_QUESTIONS: tuple[ProfileQuestion, ...] = (
     ProfileQuestion(
@@ -122,127 +143,140 @@ DEFAULT_AMOUNT_BANDS: tuple[tuple[str, str], ...] = (
 
 
 # ---------------------------------------------------------------------------
-# Parsing (validation at the boundary — never trust the file)
+# Workbook reading + row parsing (validation at the boundary)
 # ---------------------------------------------------------------------------
-def _parse_background(raw: object) -> tuple[ProfileQuestion, ...]:
-    """Validate the ``background`` block into :class:`ProfileQuestion` items."""
-    if not isinstance(raw, list):
-        raise ValueError("'background' must be a list")
+def _resolve_workbook(explicit: Path | str | None) -> Path | None:
+    """First existing of: explicit arg → ``$SURVEY_WORKBOOK`` → default file."""
+    for candidate in (explicit, os.environ.get("SURVEY_WORKBOOK"), DEFAULT_WORKBOOK):
+        if candidate and Path(candidate).exists():
+            return Path(candidate)
+    return None
+
+
+def _cell(row: dict, key: str, default: str = "") -> str:
+    """Trimmed string cell (blank for NaN/None/missing)."""
+    value = row.get(key, default)
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return default
+    return str(value).strip()
+
+
+def _split_options(raw: object) -> list[str]:
+    """Split a ``;``-separated options cell into trimmed, non-empty parts."""
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return []
+    return [part.strip() for part in str(raw).split(";") if part.strip()]
+
+
+def _read_rows(workbook: Path) -> list[dict]:
+    """Read the ``Survey_questions`` sheet into a list of row dicts."""
+    frame = pd.read_excel(workbook, sheet_name=SHEET)
+    return frame.to_dict("records")
+
+
+def _parse_background(rows: list[dict]) -> tuple[ProfileQuestion, ...]:
+    """``section=A`` rows → :class:`ProfileQuestion` items (raises on invalid)."""
     questions: list[ProfileQuestion] = []
     seen: set[str] = set()
-    for item in raw:
-        if not isinstance(item, dict):
-            raise ValueError("each background question must be an object")
-        identifier = str(item["id"]).strip()
-        prompt = str(item["prompt"]).strip()
-        options = tuple(str(o).strip() for o in item.get("options", []) if str(o).strip())
-        if not identifier or not prompt:
-            raise ValueError("background question needs a non-empty id and prompt")
+    for row in rows:
+        if _cell(row, "section").lower() not in _BACKGROUND:
+            continue
+        identifier = _cell(row, "id")
+        if not identifier:
+            continue
+        prompt = _cell(row, "prompt")
+        options = tuple(_split_options(row.get("options")))
+        if not prompt or len(options) < 2:
+            raise ValueError(f"background question {identifier!r} needs a prompt and >=2 options")
         if identifier in seen:
-            raise ValueError(f"duplicate background question id {identifier!r}")
-        if len(options) < 2:
-            raise ValueError(f"background question {identifier!r} needs >=2 options")
-        multi = str(item.get("input_type", "single")).strip().lower() == "multi"
+            raise ValueError(f"duplicate background id {identifier!r}")
         seen.add(identifier)
+        multi = _cell(row, "input_type", "single").lower() == "multi"
         questions.append(
-            ProfileQuestion(identifier, prompt, options, multi, str(item.get("help", "")))
+            ProfileQuestion(identifier, prompt, options, multi, _cell(row, "help"))
         )
-    if not questions:
-        raise ValueError("'background' is empty")
     return tuple(questions)
 
 
-def _parse_wtp_features(raw: object) -> tuple[WtpFeature, ...]:
-    """Validate the ``wtp.features`` block into :class:`WtpFeature` items."""
-    if not isinstance(raw, list):
-        raise ValueError("'wtp.features' must be a list")
+def _parse_wtp_features(rows: list[dict]) -> tuple[WtpFeature, ...]:
+    """``section=C`` rows → :class:`WtpFeature` items (raises on invalid)."""
     features: list[WtpFeature] = []
     seen: set[str] = set()
-    for item in raw:
-        if not isinstance(item, dict):
-            raise ValueError("each wtp feature must be an object")
-        identifier = str(item["id"]).strip()
-        label = str(item["label"]).strip()
-        if not identifier or not label:
-            raise ValueError("wtp feature needs a non-empty id and label")
+    for row in rows:
+        if _cell(row, "section").lower() not in _WTP:
+            continue
+        identifier = _cell(row, "id")
+        if not identifier:
+            continue
+        label = _cell(row, "prompt")
+        if not label:
+            raise ValueError(f"wtp feature {identifier!r} needs a label (prompt)")
         if identifier in seen:
-            raise ValueError(f"duplicate wtp feature id {identifier!r}")
+            raise ValueError(f"duplicate wtp id {identifier!r}")
         seen.add(identifier)
         features.append(WtpFeature(identifier, label))
-    if not features:
-        raise ValueError("'wtp.features' is empty")
     return tuple(features)
 
 
-def _parse_amount_bands(raw: object) -> tuple[tuple[str, str], ...]:
-    """Validate the ``wtp.amount_bands`` block into (code, label) pairs."""
-    if not isinstance(raw, list):
-        raise ValueError("'wtp.amount_bands' must be a list")
+def _parse_amount_bands(rows: list[dict]) -> tuple[tuple[str, str], ...]:
+    """``section=bands`` rows → (code, label) pairs (raises on invalid)."""
     bands: list[tuple[str, str]] = []
     seen: set[str] = set()
-    for item in raw:
-        if not (isinstance(item, (list, tuple)) and len(item) == 2):
-            raise ValueError("each amount band must be a [code, label] pair")
-        code, label = str(item[0]).strip(), str(item[1]).strip()
-        if not code or not label or code in seen:
-            raise ValueError(f"invalid or duplicate amount band code {code!r}")
+    for row in rows:
+        if _cell(row, "section").lower() not in _BANDS:
+            continue
+        code = _cell(row, "id")
+        if not code:
+            continue
+        label = _cell(row, "prompt")
+        if not label:
+            raise ValueError(f"amount band {code!r} needs a label (prompt)")
+        if code in seen:
+            raise ValueError(f"duplicate amount band code {code!r}")
         seen.add(code)
         bands.append((code, label))
-    if len(bands) < 2:
-        raise ValueError("'wtp.amount_bands' needs >=2 bands")
+    if bands and len(bands) < 2:
+        raise ValueError("amount bands need >=2 entries")
     return tuple(bands)
 
 
 # ---------------------------------------------------------------------------
 # Public loaders (fail-soft to defaults)
 # ---------------------------------------------------------------------------
-def _load_document(path: Path | None) -> dict:
-    """Read+parse the questions JSON; return ``{}`` if absent/unreadable."""
-    target = path or DEFAULT_QUESTIONS_PATH
-    if not Path(target).exists():
-        return {}
-    try:
-        payload = json.loads(Path(target).read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        logger.warning("Could not read %s (%s) — using built-in defaults", target, exc)
-        return {}
-    if not isinstance(payload, dict):
-        logger.warning("%s is not a JSON object — using built-in defaults", target)
-        return {}
-    return payload
-
-
-def load_background_questions(path: Path | None = None) -> tuple[ProfileQuestion, ...]:
-    """Part A questions from ``survey_questions.json`` or the built-in defaults."""
-    document = _load_document(path)
-    if "background" not in document:
+def load_background_questions(workbook: Path | str | None = None) -> tuple[ProfileQuestion, ...]:
+    """Part A questions from the workbook's sheet, or the built-in defaults."""
+    target = _resolve_workbook(workbook)
+    if target is None:
         return DEFAULT_PROFILE_QUESTIONS
     try:
-        return _parse_background(document["background"])
-    except (KeyError, ValueError, TypeError) as exc:
-        logger.warning("Invalid 'background' section (%s) — using defaults", exc)
+        questions = _parse_background(_read_rows(target))
+    except _FALLBACK_ERRORS as exc:
+        logger.warning("Could not read Part A from %s (%s) — using defaults", target, exc)
         return DEFAULT_PROFILE_QUESTIONS
+    return questions or DEFAULT_PROFILE_QUESTIONS
 
 
-def load_wtp_features(path: Path | None = None) -> tuple[WtpFeature, ...]:
-    """Part C upgrade features from ``survey_questions.json`` or the defaults."""
-    wtp = _load_document(path).get("wtp")
-    if not isinstance(wtp, dict) or "features" not in wtp:
+def load_wtp_features(workbook: Path | str | None = None) -> tuple[WtpFeature, ...]:
+    """Part C upgrade features from the workbook's sheet, or the defaults."""
+    target = _resolve_workbook(workbook)
+    if target is None:
         return DEFAULT_WTP_FEATURES
     try:
-        return _parse_wtp_features(wtp["features"])
-    except (KeyError, ValueError, TypeError) as exc:
-        logger.warning("Invalid 'wtp.features' (%s) — using defaults", exc)
+        features = _parse_wtp_features(_read_rows(target))
+    except _FALLBACK_ERRORS as exc:
+        logger.warning("Could not read Part C from %s (%s) — using defaults", target, exc)
         return DEFAULT_WTP_FEATURES
+    return features or DEFAULT_WTP_FEATURES
 
 
-def load_amount_bands(path: Path | None = None) -> tuple[tuple[str, str], ...]:
-    """Part C amount bands from ``survey_questions.json`` or the defaults."""
-    wtp = _load_document(path).get("wtp")
-    if not isinstance(wtp, dict) or "amount_bands" not in wtp:
+def load_amount_bands(workbook: Path | str | None = None) -> tuple[tuple[str, str], ...]:
+    """Part C amount bands from the workbook's sheet, or the defaults."""
+    target = _resolve_workbook(workbook)
+    if target is None:
         return DEFAULT_AMOUNT_BANDS
     try:
-        return _parse_amount_bands(wtp["amount_bands"])
-    except (ValueError, TypeError) as exc:
-        logger.warning("Invalid 'wtp.amount_bands' (%s) — using defaults", exc)
+        bands = _parse_amount_bands(_read_rows(target))
+    except _FALLBACK_ERRORS as exc:
+        logger.warning("Could not read amount bands from %s (%s) — using defaults", target, exc)
         return DEFAULT_AMOUNT_BANDS
+    return bands or DEFAULT_AMOUNT_BANDS
