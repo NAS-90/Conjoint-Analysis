@@ -1,22 +1,30 @@
-"""Long-format ACBC response schema + assemble/validate helpers.
+"""Long-format survey response schema + assemble/validate helpers.
 
 ``acbc_responses.csv`` is the on-disk artifact that captures everything a
-respondent did across BYO / Screener / Tournament. It is a *long* format:
-one row per (respondent, stage, task, alternative).
+respondent did across the linear questionnaire — Part A background, B1
+ratings, B2 must-have/unacceptable, B4 choice (Tournament), B5 calibration
+and Part C WTP — plus the legacy BYO / Screener stages. It is a *long*
+format: one row per (respondent, stage, task, alternative).
 
 Schema (column order is part of the contract):
 
 * ``respondent`` — respondent identifier (string or int).
-* ``stage`` — one of :data:`STAGE_BYO`, :data:`STAGE_SCREENER`,
-  :data:`STAGE_TOURNAMENT`.
+* ``stage`` — one of :data:`KNOWN_STAGES` (``background`` / ``rating`` /
+  ``musthave`` / ``tournament`` / ``calibration`` / ``wtp`` and the legacy
+  ``byo`` / ``screener``).
 * ``task_id`` — 1-based id of the task within its stage.
 * ``alternative_index`` — 0-based position inside the task.
-* ``chosen`` — ``1`` if this alternative was chosen, ``0`` otherwise.
-  For BYO this is "is this the preferred level"; for the Screener it is
-  the Yes/No flag; for the Tournament it is the picked profile.
+* ``chosen`` — ``1`` if this alternative was chosen, ``0`` otherwise (the
+  Tournament picked profile / Screener Yes-No / BYO preferred level). Blank
+  for value-style stages that record an answer in ``response_value`` instead.
+* ``item`` — generic per-row key: an attribute name (rating / must-have) or a
+  background / WTP question id. Blank for pure profile rows.
+* ``response_value`` — generic answer: a 1..5 rating, a ``must_have`` /
+  ``unacceptable`` verdict, a 0..5 calibration probability, a WTP amount band
+  or a background answer. Blank where ``chosen`` carries the signal.
 * ``<attribute>=<level_code>`` — one column per Part B-1 attribute,
-  encoding the alternative's profile. For BYO, only the attribute being
-  asked about has a value (other attributes are blank).
+  encoding the alternative's profile. For per-attribute value rows (BYO /
+  rating / must-have) only the asked attribute has a value.
 
 This module is intentionally storage-agnostic; it just turns Python
 records into a ``pandas.DataFrame`` with stable columns + light
@@ -36,25 +44,51 @@ import pandas as pd
 from conjoint.acbc.design import Profile
 from conjoint.acbc.tournament import Task
 
-#: Column names shared across BYO / Screener / Tournament rows.
+#: Column names shared across every survey stage.
 RESPONDENT_COL = "respondent"
 STAGE_COL = "stage"
 TASK_ID_COL = "task_id"
 ALTERNATIVE_INDEX_COL = "alternative_index"
 CHOSEN_COL = "chosen"
+#: Generic key for non-profile rows — an attribute name (ratings / must-have)
+#: or a background / WTP question id. Blank for pure profile rows.
+ITEM_COL = "item"
+#: Generic answer slot for value-style sections — a 1..5 rating, a
+#: ``must_have``/``unacceptable`` verdict, a 0..5 calibration probability or a
+#: WTP amount band. Blank where :data:`CHOSEN_COL` already carries the signal.
+RESPONSE_VALUE_COL = "response_value"
 FIXED_COLUMNS: tuple[str, ...] = (
     RESPONDENT_COL,
     STAGE_COL,
     TASK_ID_COL,
     ALTERNATIVE_INDEX_COL,
     CHOSEN_COL,
+    ITEM_COL,
+    RESPONSE_VALUE_COL,
 )
 
 #: Stage labels stored in :data:`STAGE_COL`.
 STAGE_BYO = "byo"
 STAGE_SCREENER = "screener"
 STAGE_TOURNAMENT = "tournament"
-KNOWN_STAGES: frozenset[str] = frozenset({STAGE_BYO, STAGE_SCREENER, STAGE_TOURNAMENT})
+#: Part A/B/C stages added for the linear questionnaire (collect-into-CSV).
+STAGE_BACKGROUND = "background"  # Part A profiling
+STAGE_RATING = "rating"  # B1 per-level desirability
+STAGE_MUSTHAVE = "musthave"  # B2 must-have / unacceptable level constraints
+STAGE_CALIBRATION = "calibration"  # B5 purchase-probability calibration
+STAGE_WTP = "wtp"  # Part C willingness-to-pay
+KNOWN_STAGES: frozenset[str] = frozenset(
+    {
+        STAGE_BYO,
+        STAGE_SCREENER,
+        STAGE_TOURNAMENT,
+        STAGE_BACKGROUND,
+        STAGE_RATING,
+        STAGE_MUSTHAVE,
+        STAGE_CALIBRATION,
+        STAGE_WTP,
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +130,70 @@ class ByoResponse:
     chosen_level: str
 
 
+@dataclass(frozen=True)
+class BackgroundResponse:
+    """One Part A profiling question + the respondent's answer."""
+
+    respondent: object
+    task_id: int
+    question_id: str
+    answer: str
+
+
+@dataclass(frozen=True)
+class RatingResponse:
+    """One B1 desirability rating for a single (attribute, level)."""
+
+    respondent: object
+    task_id: int
+    attribute: str
+    level: str
+    rating: int
+
+
+@dataclass(frozen=True)
+class ConstraintResponse:
+    """One B2 must-have / unacceptable verdict on a single (attribute, level)."""
+
+    respondent: object
+    task_id: int
+    attribute: str
+    level: str
+    verdict: str  # "must_have" | "unacceptable"
+
+    def __post_init__(self) -> None:
+        if self.verdict not in {"must_have", "unacceptable"}:
+            raise ValueError(
+                f"verdict must be 'must_have' or 'unacceptable' (got {self.verdict!r})"
+            )
+
+
+@dataclass(frozen=True)
+class CalibrationResponse:
+    """One B5 calibration concept + 0..5 purchase probability."""
+
+    respondent: object
+    task_id: int
+    profile: Profile
+    probability: int
+
+    def __post_init__(self) -> None:
+        if not 0 <= int(self.probability) <= 5:
+            raise ValueError(
+                f"probability must be in 0..5 (got {self.probability!r})"
+            )
+
+
+@dataclass(frozen=True)
+class WtpResponse:
+    """One Part C willingness-to-pay answer (amount band) for a feature."""
+
+    respondent: object
+    task_id: int
+    feature_id: str
+    answer: str
+
+
 # ---------------------------------------------------------------------------
 # Assembly
 # ---------------------------------------------------------------------------
@@ -109,16 +207,26 @@ def _row_skeleton(
     stage: str,
     task_id: int,
     alternative_index: int,
-    chosen: int,
+    chosen: object,
     attribute_columns: Sequence[str],
+    *,
+    item: str = "",
+    response_value: object = "",
 ) -> dict[str, object]:
-    """Empty row with fixed columns filled and attribute columns blank."""
+    """Empty row with fixed columns filled and attribute columns blank.
+
+    ``chosen`` may be ``""`` for value-style stages (rating / must-have /
+    calibration / background / WTP) where no choice was made; ``item`` and
+    ``response_value`` carry the per-row key and answer for those stages.
+    """
     row: dict[str, object] = OrderedDict()
     row[RESPONDENT_COL] = respondent
     row[STAGE_COL] = stage
     row[TASK_ID_COL] = task_id
     row[ALTERNATIVE_INDEX_COL] = alternative_index
     row[CHOSEN_COL] = chosen
+    row[ITEM_COL] = item
+    row[RESPONSE_VALUE_COL] = response_value
     for column in attribute_columns:
         row[column] = ""
     return row
@@ -208,6 +316,135 @@ def assemble_byo_responses(
     return pd.DataFrame(rows, columns=columns)
 
 
+def assemble_background_responses(
+    responses: Iterable[BackgroundResponse],
+    attribute_levels: Mapping[str, Sequence[str]],
+) -> pd.DataFrame:
+    """Long-format frame for Part A (one profiling question per row)."""
+    columns = list(FIXED_COLUMNS) + _attribute_columns(attribute_levels)
+    attribute_cols = _attribute_columns(attribute_levels)
+    rows: list[dict[str, object]] = []
+    for response in responses:
+        rows.append(
+            _row_skeleton(
+                respondent=response.respondent,
+                stage=STAGE_BACKGROUND,
+                task_id=response.task_id,
+                alternative_index=0,
+                chosen="",
+                attribute_columns=attribute_cols,
+                item=response.question_id,
+                response_value=response.answer,
+            )
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def assemble_rating_responses(
+    responses: Iterable[RatingResponse],
+    attribute_levels: Mapping[str, Sequence[str]],
+) -> pd.DataFrame:
+    """Long-format frame for B1 (one (attribute, level) rating per row)."""
+    columns = list(FIXED_COLUMNS) + _attribute_columns(attribute_levels)
+    attribute_cols = _attribute_columns(attribute_levels)
+    rows: list[dict[str, object]] = []
+    for response in responses:
+        target_col = f"{response.attribute}=level"
+        if target_col not in attribute_cols:
+            raise ValueError(
+                f"rating response references unknown attribute {response.attribute!r}"
+            )
+        row = _row_skeleton(
+            respondent=response.respondent,
+            stage=STAGE_RATING,
+            task_id=response.task_id,
+            alternative_index=0,
+            chosen="",
+            attribute_columns=attribute_cols,
+            item=response.attribute,
+            response_value=response.rating,
+        )
+        row[target_col] = response.level
+        rows.append(row)
+    return pd.DataFrame(rows, columns=columns)
+
+
+def assemble_musthave_responses(
+    responses: Iterable[ConstraintResponse],
+    attribute_levels: Mapping[str, Sequence[str]],
+) -> pd.DataFrame:
+    """Long-format frame for B2 (one flagged (attribute, level) per row)."""
+    columns = list(FIXED_COLUMNS) + _attribute_columns(attribute_levels)
+    attribute_cols = _attribute_columns(attribute_levels)
+    rows: list[dict[str, object]] = []
+    for response in responses:
+        target_col = f"{response.attribute}=level"
+        if target_col not in attribute_cols:
+            raise ValueError(
+                f"constraint response references unknown attribute {response.attribute!r}"
+            )
+        row = _row_skeleton(
+            respondent=response.respondent,
+            stage=STAGE_MUSTHAVE,
+            task_id=response.task_id,
+            alternative_index=0,
+            chosen="",
+            attribute_columns=attribute_cols,
+            item=response.attribute,
+            response_value=response.verdict,
+        )
+        row[target_col] = response.level
+        rows.append(row)
+    return pd.DataFrame(rows, columns=columns)
+
+
+def assemble_calibration_responses(
+    responses: Iterable[CalibrationResponse],
+    attribute_levels: Mapping[str, Sequence[str]],
+) -> pd.DataFrame:
+    """Long-format frame for B5 (one full concept + probability per row)."""
+    columns = list(FIXED_COLUMNS) + _attribute_columns(attribute_levels)
+    attribute_cols = _attribute_columns(attribute_levels)
+    rows: list[dict[str, object]] = []
+    for response in responses:
+        row = _row_skeleton(
+            respondent=response.respondent,
+            stage=STAGE_CALIBRATION,
+            task_id=response.task_id,
+            alternative_index=0,
+            chosen="",
+            attribute_columns=attribute_cols,
+            response_value=int(response.probability),
+        )
+        row.update(_profile_to_row(response.profile, attribute_cols))
+        rows.append(row)
+    return pd.DataFrame(rows, columns=columns)
+
+
+def assemble_wtp_responses(
+    responses: Iterable[WtpResponse],
+    attribute_levels: Mapping[str, Sequence[str]],
+) -> pd.DataFrame:
+    """Long-format frame for Part C (one feature + amount band per row)."""
+    columns = list(FIXED_COLUMNS) + _attribute_columns(attribute_levels)
+    attribute_cols = _attribute_columns(attribute_levels)
+    rows: list[dict[str, object]] = []
+    for response in responses:
+        rows.append(
+            _row_skeleton(
+                respondent=response.respondent,
+                stage=STAGE_WTP,
+                task_id=response.task_id,
+                alternative_index=0,
+                chosen="",
+                attribute_columns=attribute_cols,
+                item=response.feature_id,
+                response_value=response.answer,
+            )
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
 def concat_responses(*frames: pd.DataFrame) -> pd.DataFrame:
     """Stack stage frames preserving their shared column order."""
     non_empty = [frame for frame in frames if not frame.empty]
@@ -247,10 +484,12 @@ def validate_acbc_responses(
             )
 
     if CHOSEN_COL in df.columns:
+        # Value-style stages (rating / must-have / calibration / background /
+        # WTP) leave ``chosen`` blank — only the choice stages use 0/1.
         bad_chosen = df[CHOSEN_COL].dropna().tolist()
         for value in bad_chosen:
-            if value not in (0, 1, "0", "1", True, False):
-                problems.append(f"chosen must be 0/1 (got {value!r})")
+            if value not in (0, 1, "0", "1", True, False, ""):
+                problems.append(f"chosen must be 0/1 or blank (got {value!r})")
                 break
 
     # Each Tournament task must record exactly one chosen alternative.

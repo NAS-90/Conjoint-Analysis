@@ -68,9 +68,27 @@ def _ensure_stage(stage: str) -> None:
 
 
 def stage_answers(stage: str) -> dict[str, object]:
-    """Return the (mutable) answer dict for ``stage`` (auto-initialised)."""
+    """Return the (mutable) answer dict for ``stage`` (auto-initialised).
+
+    Side effect: makes ``stage`` the *active* stage (resetting the step pointer
+    if it changed). Only call it for the stage a page is currently driving — to
+    read *another* stage's answers from inside a page, use :func:`peek_stage`,
+    which has no side effects.
+    """
     _ensure_stage(stage)
     return st.session_state[STAGE_ANSWERS_KEY][stage]
+
+
+def peek_stage(stage: str) -> dict[str, object]:
+    """Read ``stage``'s answers without touching the active-stage / step pointer.
+
+    Unlike :func:`stage_answers`, this never calls :func:`_ensure_stage`, so it
+    is safe to read a *different* stage's answers from inside a view that drives
+    :func:`render_sequence` (reading another stage via ``stage_answers`` would
+    reset that view's step index to 0 on every rerun).
+    """
+    answers = st.session_state.get(STAGE_ANSWERS_KEY, {}) or {}
+    return answers.get(stage, {}) or {}
 
 
 def record_answer(stage: str, identifier: str, value: object) -> None:
@@ -98,6 +116,17 @@ def reset_stage(stage: str) -> None:
     st.session_state[STEP_INDEX_KEY] = 0
     answers = st.session_state.setdefault(STAGE_ANSWERS_KEY, {})
     answers[stage] = {}
+
+
+def advance_to(page_key: str) -> None:
+    """Switch to the :class:`st.Page` stashed under ``page_key``.
+
+    No-op when the handle is missing (e.g. a page opened standalone in a test),
+    so callers can use it unconditionally as a section's "Next/Finish" action.
+    """
+    page = st.session_state.get(page_key)
+    if page is not None:
+        st.switch_page(page)
 
 
 # ---------------------------------------------------------------------------
