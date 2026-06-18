@@ -32,11 +32,11 @@ st.set_page_config(page_title="Strategic Product Optimizer", layout="wide")
 # page is a separate, self-contained view (renders then st.stop()s so the rest of
 # this script does not run for that mode).
 _module = st.sidebar.radio(
-    "分析模块 / Module",
-    ["产品组合分析", "ACBC 数据质量与诊断"],
-    help="切换到 ACBC 数据质量与模型诊断页(§8 数据清洗 + §9.10 诊断)。",
+    "Module",
+    ["Portfolio analysis", "ACBC data quality & diagnostics"],
+    help="Switch to the ACBC data quality & model diagnostics page (§8 data cleaning + §9.10 diagnostics).",
 )
-if _module == "ACBC 数据质量与诊断":
+if _module == "ACBC data quality & diagnostics":
     from dashboard.quality_diagnostics import render_quality_diagnostics
 
     render_quality_diagnostics()

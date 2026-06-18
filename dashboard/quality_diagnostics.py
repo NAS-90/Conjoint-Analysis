@@ -122,10 +122,11 @@ def render_quality_diagnostics() -> None:
     """Render the ACBC quality + diagnostics page (called from ``app.py``)."""
     import streamlit as st
 
-    st.title("📋 ACBC 数据质量与诊断")
+    st.title("📋 ACBC data quality & diagnostics")
     st.caption(
-        "§8 数据清洗 + §9.10 模型诊断。默认使用合成 demo 数据(已注入直线作答 / "
-        "不合逻辑 / 未完成 / 速答 四类问题受访者),可改用真实 acbc_responses.csv。"
+        "§8 data cleaning + §9.10 model diagnostics. Defaults to synthetic demo "
+        "data (with injected straight-lining / illogical / incomplete / speeding "
+        "respondents); you can switch to a real acbc_responses.csv."
     )
 
     df = _load_responses(st)
@@ -135,13 +136,13 @@ def render_quality_diagnostics() -> None:
     try:
         analysis = _cached_analysis(df)
     except Exception as exc:  # never crash the dashboard over a fit error
-        st.error(f"分析失败:{exc}")
+        st.error(f"Analysis failed: {exc}")
         return
 
     st.caption(
-        f"样本:{analysis.n_respondents} 位受访者 · "
-        f"{analysis.n_tournament_tasks} 个 tournament 任务 · "
-        f"HB 收敛 Rhat max = {analysis.rhat_max:.3f}"
+        f"Sample: {analysis.n_respondents} respondents · "
+        f"{analysis.n_tournament_tasks} tournament tasks · "
+        f"HB convergence Rhat max = {analysis.rhat_max:.3f}"
     )
 
     _render_diagnostic_cards(st, analysis)
@@ -154,81 +155,81 @@ def render_quality_diagnostics() -> None:
 def _load_responses(st) -> pd.DataFrame | None:
     """Data-source picker → validated long-format frame (or ``None``)."""
     source = st.sidebar.radio(
-        "数据来源",
-        ["合成 demo 数据", "上传 CSV", "本地路径"],
-        help="新方法需要 long-format acbc_responses.csv;默认用注入问题的合成数据。",
+        "Data source",
+        ["Synthetic demo data", "Upload CSV", "Local path"],
+        help="The new method needs a long-format acbc_responses.csv; defaults to synthetic data with injected issues.",
     )
     df: pd.DataFrame | None = None
-    if source == "合成 demo 数据":
-        seed = int(st.sidebar.number_input("合成种子", value=2026, step=1))
+    if source == "Synthetic demo data":
+        seed = int(st.sidebar.number_input("Synthetic seed", value=2026, step=1))
         df = _cached_demo(seed)
         st.sidebar.download_button(
-            "下载这份合成 CSV",
+            "Download this synthetic CSV",
             data=df.to_csv(index=False).encode("utf-8"),
             file_name="acbc_responses_demo.csv",
             mime="text/csv",
         )
-    elif source == "上传 CSV":
+    elif source == "Upload CSV":
         uploaded = st.sidebar.file_uploader("acbc_responses.csv", type="csv")
         if uploaded is None:
-            st.info("请在左侧上传一个 long-format acbc_responses.csv。")
+            st.info("Please upload a long-format acbc_responses.csv on the left.")
             return None
         df = pd.read_csv(uploaded)
     else:
-        path = st.sidebar.text_input("CSV 路径", value="outputs/acbc_demo/acbc_responses.csv")
+        path = st.sidebar.text_input("CSV path", value="outputs/acbc_demo/acbc_responses.csv")
         if not path:
             return None
         try:
             df = read_acbc_responses(path)
         except Exception as exc:
-            st.error(f"读取失败:{exc}")
+            st.error(f"Read failed: {exc}")
             return None
 
     if STAGE_COL not in df.columns or not (df[STAGE_COL] == STAGE_TOURNAMENT).any():
-        st.error("该文件没有 tournament 行,无法做 ACBC 估计与诊断。")
+        st.error("This file has no tournament rows, so ACBC estimation and diagnostics cannot run.")
         return None
     return df
 
 
 def _render_diagnostic_cards(st, analysis: AcbcAnalysis) -> None:
     """Four headline diagnostics with pass/warn status."""
-    st.subheader("模型诊断 (§9.10 #10)")
+    st.subheader("Model diagnostics (§9.10 #10)")
     col1, col2, col3, col4 = st.columns(4)
 
     hit = analysis.holdout
     col1.metric(
-        "Holdout 命中率",
+        "Holdout hit-rate",
         f"{hit.hit_rate:.1%}",
-        delta=f"{hit.hit_rate - hit.random_baseline:+.1%} vs 随机",
-        help=f"留出 {hit.n_holdout_tasks} 个任务,随机基线 {hit.random_baseline:.1%}。越高越好。",
+        delta=f"{hit.hit_rate - hit.random_baseline:+.1%} vs random",
+        help=f"Held out {hit.n_holdout_tasks} tasks, random baseline {hit.random_baseline:.1%}. Higher is better.",
     )
-    col1.caption("✅ 优于随机" if hit.beats_random else "⚠️ 不优于随机")
+    col1.caption("✅ Beats random" if hit.beats_random else "⚠️ Not better than random")
 
     median_rlh = float(analysis.rlh["rlh"].median()) if not analysis.rlh.empty else float("nan")
-    col2.metric("个体 RLH 中位数", f"{median_rlh:.3f}", help="§9.6 用各自 β_i 计算;接近随机水平说明作答质量差。")
+    col2.metric("Median individual RLH", f"{median_rlh:.3f}", help="§9.6 computed with each respondent's β_i; near random level means poor answer quality.")
 
     if analysis.monotonicity is not None:
         ok = analysis.monotonicity.monotonic
-        col3.metric("价格单调性", "✅ 合理" if ok else "❌ 异常")
-        col3.caption("越贵效用越低(预期)" if ok else f"违反:{analysis.monotonicity.violations}")
+        col3.metric("Price monotonicity", "✅ Plausible" if ok else "❌ Anomalous")
+        col3.caption("Pricier → lower utility (expected)" if ok else f"Violations: {analysis.monotonicity.violations}")
     else:
-        col3.metric("价格单调性", "—")
-        col3.caption("无 price 属性可检查")
+        col3.metric("Price monotonicity", "—")
+        col3.caption("No price attribute to check")
 
     dom = analysis.dominance
     col4.metric(
-        "最大属性占比",
+        "Max attribute share",
         f"{dom.relative_importance:.1%}",
-        help=f"最重要属性:{dom.attribute}。超过 {dom.threshold:.0%} 视为不合理支配。",
+        help=f"Most important attribute: {dom.attribute}. Above {dom.threshold:.0%} is treated as implausible dominance.",
     )
-    col4.caption("❌ 单属性过度支配" if dom.dominates else f"✅ {dom.attribute} 未过度支配")
+    col4.caption("❌ Single attribute over-dominates" if dom.dominates else f"✅ {dom.attribute} does not over-dominate")
 
 
 def _render_importance(st, analysis: AcbcAnalysis) -> None:
     """Relative importance bar + raw/rescaled part-worth view."""
     import plotly.express as px
 
-    st.subheader("属性重要性与部件效用 (§7 / §9.8)")
+    st.subheader("Attribute importance & part-worths (§7 / §9.8)")
     left, right = st.columns([1, 1])
 
     with left:
@@ -237,17 +238,17 @@ def _render_importance(st, analysis: AcbcAnalysis) -> None:
         ).sort_values("relative_importance", ascending=True)
         fig = px.bar(
             imp, x="relative_importance", y="attribute", orientation="h",
-            title="相对重要性 (Range_A / ΣRange)",
+            title="Relative importance (Range_A / ΣRange)",
         )
         fig.update_layout(xaxis_tickformat=".0%", yaxis_title="", xaxis_title="")
         st.plotly_chart(fig, use_container_width=True)
 
     with right:
         scale = st.radio(
-            "部件效用刻度",
+            "Part-worth scale",
             ["raw (zero-centered)", "zero-centered diffs (mean range=100)"],
             horizontal=False,
-            help="§9.8 可读性变换;rescaled 保持相对重要性不变,只是把平均极差缩放到 100。",
+            help="§9.8 readability transform; rescaled keeps relative importance unchanged, only scaling the mean range to 100.",
         )
         utilities = (
             analysis.level_utilities
@@ -257,7 +258,7 @@ def _render_importance(st, analysis: AcbcAnalysis) -> None:
         tidy = utilities_long(utilities).sort_values(["attribute", "utility"])
         fig2 = px.bar(
             tidy, x="utility", y="level", color="attribute", orientation="h",
-            title="部件效用 (part-worths)",
+            title="Part-worths",
         )
         fig2.update_layout(yaxis_title="", xaxis_title="")
         st.plotly_chart(fig2, use_container_width=True)
@@ -267,12 +268,12 @@ def _render_quality_screen(st, df: pd.DataFrame, analysis: AcbcAnalysis) -> None
     """§8 quality flags with live-tunable thresholds and an RLH cut."""
     import plotly.express as px
 
-    st.subheader("数据质量筛查 (§8)")
+    st.subheader("Data quality screen (§8)")
     c1, c2, c3, c4 = st.columns(4)
-    rlh_threshold = c1.slider("RLH 剔除阈值", 0.0, 1.0, 0.30, 0.01)
-    speeding_quantile = c2.slider("speeding 分位", 0.0, 0.49, 0.05, 0.01)
-    min_tasks = c3.slider("直线作答最少任务数", 2, 12, 3, 1)
-    max_incons = c4.slider("不合逻辑阈值 (支配选择占比)", 0.0, 1.0, 0.50, 0.05)
+    rlh_threshold = c1.slider("RLH removal threshold", 0.0, 1.0, 0.30, 0.01)
+    speeding_quantile = c2.slider("Speeding percentile", 0.0, 0.49, 0.05, 0.01)
+    min_tasks = c3.slider("Min tasks for straight-lining", 2, 12, 3, 1)
+    max_incons = c4.slider("Illogical threshold (dominant-choice share)", 0.0, 1.0, 0.50, 0.05)
 
     has_duration = "duration" in df.columns
     flags = quality.screen_quality(
@@ -290,20 +291,20 @@ def _render_quality_screen(st, df: pd.DataFrame, analysis: AcbcAnalysis) -> None
     flags["exclude"] = flags["flagged"] | flags["low_rlh"]
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("§8 被标记", int(flags["flagged"].sum()))
-    m2.metric(f"低 RLH (< {rlh_threshold:.2f})", int(flags["low_rlh"].sum()))
-    m3.metric("建议剔除合计", int(flags["exclude"].sum()), help="§8 标记 ∪ 低 RLH。")
+    m1.metric("§8 flagged", int(flags["flagged"].sum()))
+    m2.metric(f"Low RLH (< {rlh_threshold:.2f})", int(flags["low_rlh"].sum()))
+    m3.metric("Total flagged for removal", int(flags["exclude"].sum()), help="§8 flagged ∪ low RLH.")
 
     # RLH distribution with the cut + random baseline.
     if not analysis.rlh.empty:
-        hist = px.histogram(analysis.rlh, x="rlh", nbins=20, title="个体 RLH 分布")
+        hist = px.histogram(analysis.rlh, x="rlh", nbins=20, title="Individual RLH distribution")
         hist.add_vline(x=rlh_threshold, line_dash="dash", line_color="red",
-                       annotation_text="剔除阈值")
+                       annotation_text="Removal threshold")
         hist.add_vline(x=analysis.holdout.random_baseline, line_dash="dot",
-                       line_color="gray", annotation_text="随机基线")
+                       line_color="gray", annotation_text="Random baseline")
         st.plotly_chart(hist, use_container_width=True)
 
-    only_flagged = st.checkbox("只看被标记的受访者", value=True)
+    only_flagged = st.checkbox("Show flagged respondents only", value=True)
     table = flags.merge(analysis.rlh[[RESPONDENT_COL, "rlh"]], on=RESPONDENT_COL, how="left")
     if only_flagged:
         table = table[table["exclude"]]
@@ -316,13 +317,13 @@ def _render_quality_screen(st, df: pd.DataFrame, analysis: AcbcAnalysis) -> None
         hide_index=True, use_container_width=True,
     )
     st.download_button(
-        "下载质量旗标 CSV",
+        "Download quality flags CSV",
         data=flags.to_csv(index=False).encode("utf-8"),
         file_name="acbc_quality_flags.csv",
         mime="text/csv",
     )
     if not has_duration:
-        st.caption("注:该数据未采集作答时长,speeding 检查已跳过。")
+        st.caption("Note: this data has no response duration, so the speeding check was skipped.")
 
 
 # ---------------------------------------------------------------------------
@@ -331,7 +332,7 @@ def _render_quality_screen(st, df: pd.DataFrame, analysis: AcbcAnalysis) -> None
 def _cached_demo(seed: int) -> pd.DataFrame:
     import streamlit as st
 
-    @st.cache_data(show_spinner="生成合成数据中…")
+    @st.cache_data(show_spinner="Generating synthetic data…")
     def _gen(s: int) -> pd.DataFrame:
         return synthetic.generate_demo_responses(seed=s)
 
@@ -341,7 +342,7 @@ def _cached_demo(seed: int) -> pd.DataFrame:
 def _cached_analysis(df: pd.DataFrame) -> AcbcAnalysis:
     import streamlit as st
 
-    @st.cache_data(show_spinner="拟合 MNL + HB 模型中…")
+    @st.cache_data(show_spinner="Fitting MNL + HB model…")
     def _run(frame: pd.DataFrame) -> AcbcAnalysis:
         return analyze_responses(frame)
 

@@ -120,7 +120,7 @@ def band_label(ctx: SurveyContext, code: str) -> str:
 def _cached_synthetic(n_respondents: int, seed: int) -> pd.DataFrame:
     import streamlit as st
 
-    @st.cache_data(show_spinner="生成合成问卷数据中… / generating responses")
+    @st.cache_data(show_spinner="Generating synthetic responses…")
     def _gen(n: int, s: int) -> pd.DataFrame:
         from conjoint.acbc import respondent_sim as rs
 
@@ -142,7 +142,7 @@ def _cached_synthetic(n_respondents: int, seed: int) -> pd.DataFrame:
 def _cached_results(df: pd.DataFrame, hb_iter: int, seed: int) -> SurveyResults:
     import streamlit as st
 
-    @st.cache_data(show_spinner="拟合 MNL + HB 模型中… / fitting model")
+    @st.cache_data(show_spinner="Fitting MNL + Hierarchical Bayes model…")
     def _run(frame: pd.DataFrame, iters: int, s: int) -> SurveyResults:
         ctx = load_context()
         return analyze_survey_results(
@@ -163,10 +163,11 @@ def render_results_dashboard() -> None:
     """Render the standalone ACBC results page (called from ``results_app.py``)."""
     import streamlit as st
 
-    st.title("📊 ACBC 调研结果 / Conjoint Results")
+    st.title("📊 Conjoint Results")
     st.caption(
-        "基于问卷 B4 选择拟合的 Hierarchical Bayes 部件效用,展示属性重要性、部件效用、"
-        "支付意愿、市场模拟、购买可能性与受访者画像。"
+        "Hierarchical Bayes part-worth utilities fitted from the B4 choices, covering "
+        "attribute importance, part-worth utilities, willingness to pay, market "
+        "simulation, purchase likelihood and respondent segments."
     )
 
     ctx = load_context()
@@ -176,18 +177,18 @@ def render_results_dashboard() -> None:
 
     hb_iter = int(
         st.sidebar.select_slider(
-            "HB 迭代次数 / iterations",
+            "HB iterations",
             options=[200, 400, 1000, 2000, 4000],
             value=400,
-            help="400 为预览档(Rhat 可能 > 1.1);出版级建议 ≥ 4000。",
+            help="400 is a preview setting (Rhat may exceed 1.1); use >= 4000 for publication-quality results.",
         )
     )
-    seed = int(st.sidebar.number_input("随机种子 / seed", value=0, step=1))
+    seed = int(st.sidebar.number_input("Random seed", value=0, step=1))
 
     try:
         results = _cached_results(df, hb_iter, seed)
     except Exception as exc:  # never crash the dashboard over a fit error
-        st.error(f"分析失败 / analysis failed: {exc}")
+        st.error(f"Analysis failed: {exc}")
         return
 
     _render_overview(st, results)
@@ -208,41 +209,41 @@ def render_results_dashboard() -> None:
 def _load_responses(st, ctx: SurveyContext) -> pd.DataFrame | None:
     """Data-source picker → validated long-format frame (or ``None``)."""
     source = st.sidebar.radio(
-        "数据来源 / data source",
-        ["合成问卷数据", "上传 CSV", "本地路径"],
-        help="需要 long-format acbc_responses.csv;默认实时生成一份合成问卷数据。",
+        "Data source",
+        ["Synthetic responses", "Upload CSV", "Local path"],
+        help="Requires a long-format acbc_responses.csv; by default a synthetic dataset is generated on the fly.",
     )
     df: pd.DataFrame | None = None
-    if source == "合成问卷数据":
-        n = int(st.sidebar.slider("受访者数量 / N", min_value=20, max_value=500, value=200, step=10))
-        seed = int(st.sidebar.number_input("合成种子 / gen seed", value=2026, step=1))
+    if source == "Synthetic responses":
+        n = int(st.sidebar.slider("Respondents (N)", min_value=20, max_value=500, value=200, step=10))
+        seed = int(st.sidebar.number_input("Generation seed", value=2026, step=1))
         df = _cached_synthetic(n, seed)
         st.sidebar.download_button(
-            "下载这份合成 CSV",
+            "Download this synthetic CSV",
             data=df.to_csv(index=False).encode("utf-8"),
             file_name="synthetic_responses.csv",
             mime="text/csv",
         )
-    elif source == "上传 CSV":
+    elif source == "Upload CSV":
         uploaded = st.sidebar.file_uploader("acbc_responses.csv", type="csv")
         if uploaded is None:
-            st.info("请在左侧上传一个 long-format acbc_responses.csv。")
+            st.info("Please upload a long-format acbc_responses.csv in the sidebar.")
             return None
         df = pd.read_csv(uploaded)
     else:
         stem = _spec_path().stem.replace("questionnaire_spec", "").strip("_") or "default"
         default_path = f"outputs/synthetic_responses_{stem}.csv"
-        path = st.sidebar.text_input("CSV 路径", value=default_path)
+        path = st.sidebar.text_input("CSV path", value=default_path)
         if not path:
             return None
         try:
             df = read_acbc_responses(path)
         except Exception as exc:
-            st.error(f"读取失败 / read failed: {exc}")
+            st.error(f"Read failed: {exc}")
             return None
 
     if STAGE_COL not in df.columns or not (df[STAGE_COL] == STAGE_TOURNAMENT).any():
-        st.error("该文件没有 tournament 行,无法做 ACBC 估计。")
+        st.error("This file has no tournament rows, so ACBC estimation is not possible.")
         return None
     return df
 
@@ -251,17 +252,17 @@ def _load_responses(st, ctx: SurveyContext) -> pd.DataFrame | None:
 # Section 1 — Overview
 # ---------------------------------------------------------------------------
 def _render_overview(st, results: SurveyResults) -> None:
-    st.subheader("① 样本与收敛 / Overview")
+    st.subheader("① Overview & convergence")
     col1, col2, col3 = st.columns(3)
-    col1.metric("受访者 / Respondents", f"{results.n_respondents}")
-    col2.metric("Tournament 任务 / tasks", f"{results.n_tournament_tasks}")
+    col1.metric("Respondents", f"{results.n_respondents}")
+    col2.metric("Tournament tasks", f"{results.n_tournament_tasks}")
     converged = results.rhat_max < 1.1
     col3.metric(
-        "HB 收敛 Rhat max",
+        "HB convergence (Rhat max)",
         f"{results.rhat_max:.2f}",
-        help="Gelman-Rubin < 1.1 视为收敛。预览档迭代少时偏高,提高迭代次数即可。",
+        help="Gelman-Rubin < 1.1 indicates convergence. It runs high with few preview iterations; just raise the iteration count.",
     )
-    col3.caption("✅ 已收敛" if converged else "⚠️ 预览档(建议提高 HB 迭代次数)")
+    col3.caption("✅ Converged" if converged else "⚠️ Preview run (consider raising HB iterations)")
 
 
 # ---------------------------------------------------------------------------
@@ -270,24 +271,25 @@ def _render_overview(st, results: SurveyResults) -> None:
 def _render_importance(st, results: SurveyResults, ctx: SurveyContext) -> None:
     import plotly.express as px
 
-    st.subheader("② 属性重要性 / Attribute importance")
+    st.subheader("② Attribute importance")
     imp = results.importance.copy()
-    imp["属性"] = imp["attribute"].map(attr_name)
+    imp["Attribute"] = imp["attribute"].map(attr_name)
     imp = imp.sort_values("relative_importance")
     fig = px.bar(
         imp,
         x="relative_importance",
-        y="属性",
+        y="Attribute",
         orientation="h",
         text=imp["relative_importance"].map(lambda v: f"{v:.1%}"),
-        title="相对重要性 (Range_A / ΣRange)",
+        title="Relative importance (Range_A / ΣRange)",
     )
     fig.update_layout(xaxis_tickformat=".0%", xaxis_title="", yaxis_title="")
     st.plotly_chart(fig, use_container_width=True)
     top = imp.sort_values("relative_importance", ascending=False).iloc[0]
     st.caption(
-        f"最重要的属性是 **{top['属性']}**(占 {top['relative_importance']:.1%}),"
-        "条形越长代表该属性对选择的影响越大。"
+        f"The most important attribute is **{top['Attribute']}** "
+        f"({top['relative_importance']:.1%}); a longer bar means the attribute has a "
+        "greater influence on choice."
     )
 
 
@@ -298,10 +300,10 @@ def _partworths_long(results: SurveyResults, ctx: SurveyContext) -> pd.DataFrame
     rows = [
         {
             "attribute": attribute,
-            "属性": attr_name(attribute),
+            "Attribute": attr_name(attribute),
             "level": level,
-            "水平 / level": level_label(ctx, attribute, level),
-            "效用 / utility": float(value),
+            "Level": level_label(ctx, attribute, level),
+            "Utility": float(value),
         }
         for attribute, per_level in results.rescaled_utilities.items()
         for level, value in per_level.items()
@@ -312,12 +314,12 @@ def _partworths_long(results: SurveyResults, ctx: SurveyContext) -> pd.DataFrame
 def _render_partworths(st, results: SurveyResults, ctx: SurveyContext) -> None:
     import plotly.express as px
 
-    st.subheader("③ 部件效用 / Part-worth utilities")
-    st.caption("零中心化「diffs」刻度(各属性平均极差=100),效用越高代表越受偏好。")
+    st.subheader("③ Part-worth utilities")
+    st.caption("Zero-centered \"diffs\" scale (mean range per attribute = 100); higher utility means more preferred.")
     tidy = _partworths_long(results, ctx)
     attributes = list(results.rescaled_utilities.keys())
     chosen = st.selectbox(
-        "选择属性 / attribute",
+        "Select attribute",
         options=attributes,
         index=0,
         format_func=attr_name,
@@ -326,17 +328,17 @@ def _render_partworths(st, results: SurveyResults, ctx: SurveyContext) -> None:
     block = tidy[tidy["attribute"] == chosen]
     fig = px.bar(
         block,
-        x="效用 / utility",
-        y="水平 / level",
+        x="Utility",
+        y="Level",
         orientation="h",
-        text=block["效用 / utility"].map(lambda v: f"{v:+.0f}"),
-        title=f"{attr_name(chosen)} 各水平效用",
+        text=block["Utility"].map(lambda v: f"{v:+.0f}"),
+        title=f"{attr_name(chosen)} — utility by level",
     )
     fig.update_layout(xaxis_title="", yaxis_title="")
     st.plotly_chart(fig, use_container_width=True)
-    with st.expander("查看全部属性的部件效用表"):
+    with st.expander("Show part-worth utilities for all attributes"):
         st.dataframe(
-            tidy[["属性", "水平 / level", "效用 / utility"]].round(1),
+            tidy[["Attribute", "Level", "Utility"]].round(1),
             hide_index=True,
             use_container_width=True,
         )
@@ -348,28 +350,28 @@ def _render_partworths(st, results: SurveyResults, ctx: SurveyContext) -> None:
 def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
     import plotly.express as px
 
-    st.subheader("④ 支付意愿 / Willingness-to-pay")
+    st.subheader("④ Willingness-to-pay")
     left, right = st.columns(2)
 
     with left:
-        st.markdown("**陈述性 WTP(Part C)** — 受访者愿意为升级多付多少")
+        st.markdown("**Stated WTP (Part C)** — how much extra respondents will pay for an upgrade")
         if results.wtp is None:
-            st.info("此数据没有 Part C(WTP)记录。")
+            st.info("This dataset has no Part C (WTP) records.")
         else:
             rows = []
             for feature_id, fw in results.wtp.features.items():
                 rows.append(
                     {
-                        "升级 / feature": feature_label(ctx, feature_id),
-                        "最常见档位 / modal": band_label(ctx, fw.modal_band),
-                        "愿意加价占比": f"{fw.share_paid:.0%}",
-                        "平均加价 / mean $": (f"${fw.mean_usd:,.0f}" if fw.mean_usd is not None else "—"),
+                        "Feature": feature_label(ctx, feature_id),
+                        "Modal band": band_label(ctx, fw.modal_band),
+                        "Share willing to pay": f"{fw.share_paid:.0%}",
+                        "Mean premium ($)": (f"${fw.mean_usd:,.0f}" if fw.mean_usd is not None else "—"),
                     }
                 )
             st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
             feature_ids = list(results.wtp.features.keys())
             picked = st.selectbox(
-                "查看某项升级的档位分布 / feature",
+                "View band distribution for a feature",
                 options=feature_ids,
                 index=0,
                 format_func=lambda fid: feature_label(ctx, fid),
@@ -378,29 +380,29 @@ def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
             fw = results.wtp.features[picked]
             dist = pd.DataFrame(
                 {
-                    "档位 / band": [band_label(ctx, code) for code in fw.band_counts],
-                    "人数 / count": list(fw.band_counts.values()),
+                    "Band": [band_label(ctx, code) for code in fw.band_counts],
+                    "Count": list(fw.band_counts.values()),
                 }
             )
-            fig = px.bar(dist, x="档位 / band", y="人数 / count", title=feature_label(ctx, picked))
+            fig = px.bar(dist, x="Band", y="Count", title=feature_label(ctx, picked))
             fig.update_layout(xaxis_title="", yaxis_title="")
             st.plotly_chart(fig, use_container_width=True)
 
     with right:
-        st.markdown("**推导式 WTP** — 由价格部件效用换算的美元价值")
+        st.markdown("**Derived WTP** — dollar value converted from the price part-worth utilities")
         derived = results.derived_wtp
         if not derived.available:
-            st.info(f"无法推导货币化 WTP:{derived.note}。")
+            st.info(f"Monetary WTP cannot be derived: {derived.note}.")
         else:
-            st.caption(f"每 1 效用 ≈ **${derived.usd_per_util:,.0f}**(由价格档位斜率推得)。")
+            st.caption(f"1 utility unit ≈ **${derived.usd_per_util:,.0f}** (derived from the price-band slope).")
             table = derived.per_attribute.copy()
-            table["属性"] = table["attribute"].map(attr_name)
-            table["水平 / level"] = [
+            table["Attribute"] = table["attribute"].map(attr_name)
+            table["Level"] = [
                 level_label(ctx, a, lv) for a, lv in zip(table["attribute"], table["level"])
             ]
-            table["相对最差水平的价值 / $"] = table["usd_vs_worst"].map(lambda v: f"${v:,.0f}")
+            table["Value vs. worst level ($)"] = table["usd_vs_worst"].map(lambda v: f"${v:,.0f}")
             st.dataframe(
-                table[["属性", "水平 / level", "相对最差水平的价值 / $"]],
+                table[["Attribute", "Level", "Value vs. worst level ($)"]],
                 hide_index=True,
                 use_container_width=True,
             )
@@ -420,16 +422,16 @@ def _default_product_spec(ctx: SurveyContext, index: int) -> dict:
 def _render_simulator(st, results: SurveyResults, ctx: SurveyContext) -> None:
     import plotly.express as px
 
-    st.subheader("⑤ 市场模拟 / Market simulator")
-    st.caption("配置若干竞争产品,基于每位受访者的 HB 效用计算 share-of-preference(偏好份额)。")
+    st.subheader("⑤ Market simulator")
+    st.caption("Configure competing products and compute share of preference from each respondent's HB utilities.")
 
-    n_products = int(st.number_input("产品数量 / products", min_value=2, max_value=4, value=2, step=1))
+    n_products = int(st.number_input("Number of products", min_value=2, max_value=4, value=2, step=1))
     attributes = list(ctx.attribute_levels.keys())
     products: dict[str, dict] = {}
     columns = st.columns(n_products)
     for index in range(n_products):
         default = _default_product_spec(ctx, index)
-        name = f"产品 {chr(65 + index)}"
+        name = f"Product {chr(65 + index)}"
         with columns[index]:
             st.markdown(f"**{name}**")
             spec: dict[str, str] = {}
@@ -447,37 +449,37 @@ def _render_simulator(st, results: SurveyResults, ctx: SurveyContext) -> None:
     utilities = sim.utilities_from_frame(results.hb_utilities, results.level_map)
     shares = sim.aggregate_shares([sim.share_of_preference(u, products) for u in utilities])
     share_df = pd.DataFrame(
-        {"产品 / product": list(shares.keys()), "份额 / share": list(shares.values())}
+        {"Product": list(shares.keys()), "Share": list(shares.values())}
     )
     fig = px.bar(
         share_df,
-        x="产品 / product",
-        y="份额 / share",
-        text=share_df["份额 / share"].map(lambda v: f"{v:.1%}"),
-        title="偏好份额 / share of preference",
+        x="Product",
+        y="Share",
+        text=share_df["Share"].map(lambda v: f"{v:.1%}"),
+        title="Share of preference",
     )
     fig.update_layout(yaxis_tickformat=".0%", xaxis_title="", yaxis_title="")
     st.plotly_chart(fig, use_container_width=True)
 
     to_remove = st.multiselect(
-        "移除产品看份额转移 / remove product(s)",
+        "Remove product(s) to see share transfer",
         options=list(products.keys()),
     )
     if to_remove and len(to_remove) < len(products):
         impact = sim.removal_impact(utilities, products, to_remove)
         transfer = impact.transfer.rename(
             columns={
-                "product": "产品",
-                "removed": "已移除",
-                "share_before": "移除前",
-                "share_after": "移除后",
-                "delta": "变化",
+                "product": "Product",
+                "removed": "Removed",
+                "share_before": "Share before",
+                "share_after": "Share after",
+                "delta": "Change",
             }
         )
-        for column in ("移除前", "移除后", "变化"):
+        for column in ("Share before", "Share after", "Change"):
             transfer[column] = transfer[column].map(lambda v: f"{v:.1%}")
         st.dataframe(transfer, hide_index=True, use_container_width=True)
-        st.caption("「变化」为正,表示该产品吸收了被移除产品的份额。")
+        st.caption("A positive \"Change\" means the product absorbed share from the removed product(s).")
 
 
 # ---------------------------------------------------------------------------
@@ -486,17 +488,17 @@ def _render_simulator(st, results: SurveyResults, ctx: SurveyContext) -> None:
 def _render_calibration(st, results: SurveyResults) -> None:
     import plotly.express as px
 
-    st.subheader("⑥ 购买可能性 / Purchase likelihood (B5)")
+    st.subheader("⑥ Purchase likelihood (B5)")
     cal = results.calibration
     if cal is None:
-        st.info("此数据没有 B5 校准(calibration)记录。")
+        st.info("This dataset has no B5 calibration records.")
         return
     col1, col2 = st.columns([1, 2])
-    col1.metric("平均购买可能性", f"{cal.mean_probability_pct:.0f}%", help="B5 概率 0–5,折算为百分比。")
+    col1.metric("Mean purchase likelihood", f"{cal.mean_probability_pct:.0f}%", help="B5 rating 0-5, converted to a percentage.")
     dist = pd.DataFrame(
-        {"购买意愿 0–5": list(cal.distribution.keys()), "人数 / count": list(cal.distribution.values())}
+        {"Purchase intent (0-5)": list(cal.distribution.keys()), "Count": list(cal.distribution.values())}
     )
-    fig = px.bar(dist, x="购买意愿 0–5", y="人数 / count", title="购买意愿分布(0=绝不买 · 5=一定买)")
+    fig = px.bar(dist, x="Purchase intent (0-5)", y="Count", title="Purchase intent distribution (0 = never buy, 5 = definitely buy)")
     fig.update_layout(xaxis_title="", yaxis_title="")
     col2.plotly_chart(fig, use_container_width=True)
 
@@ -507,10 +509,10 @@ def _render_calibration(st, results: SurveyResults) -> None:
 def _render_segments(st, results: SurveyResults, ctx: SurveyContext) -> None:
     import plotly.express as px
 
-    st.subheader("⑦ 受访者画像 / Respondent segments (Part A)")
+    st.subheader("⑦ Respondent segments (Part A)")
     background = results.background
     if background is None or not background.questions:
-        st.info("此数据没有 Part A(背景)记录。")
+        st.info("This dataset has no Part A (background) records.")
         return
 
     def _prompt(question_id: str) -> str:
@@ -521,7 +523,7 @@ def _render_segments(st, results: SurveyResults, ctx: SurveyContext) -> None:
 
     question_ids = list(background.questions.keys())
     picked = st.selectbox(
-        "选择背景问题 / question",
+        "Select background question",
         options=question_ids,
         index=0,
         format_func=_prompt,
@@ -529,12 +531,12 @@ def _render_segments(st, results: SurveyResults, ctx: SurveyContext) -> None:
     )
     counts = background.questions[picked]
     dist = pd.DataFrame(
-        {"选项 / answer": list(counts.keys()), "人数 / count": list(counts.values())}
-    ).sort_values("人数 / count")
+        {"Answer": list(counts.keys()), "Count": list(counts.values())}
+    ).sort_values("Count")
     fig = px.bar(
         dist,
-        x="人数 / count",
-        y="选项 / answer",
+        x="Count",
+        y="Answer",
         orientation="h",
         title=_prompt(picked),
     )
