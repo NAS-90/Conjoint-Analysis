@@ -1,0 +1,239 @@
+{
+  "version": "0.1",
+  "scale": {
+    "min": 1,
+    "max": 5
+  },
+  "attributes": [
+    {
+      "feature_name": "price",
+      "description": "Retail price tier",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'price'?",
+      "levels": [
+        {
+          "code": "budget",
+          "label": "Budget (< $600)"
+        },
+        {
+          "code": "mid_range",
+          "label": "Mid-range ($600 – $1 200)"
+        },
+        {
+          "code": "premium",
+          "label": "Premium (> $1 200)"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "processor",
+      "description": "CPU performance tier",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'processor'?",
+      "levels": [
+        {
+          "code": "entry",
+          "label": "Entry (Core i3 / Ryzen 3)"
+        },
+        {
+          "code": "mainstream",
+          "label": "Mainstream (Core i5 / Ryzen 5)"
+        },
+        {
+          "code": "performance",
+          "label": "Performance (Core i7-i9 / Ryzen 7-9)"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "ram",
+      "description": "System memory",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'ram'?",
+      "levels": [
+        {
+          "code": "8gb",
+          "label": "8 GB"
+        },
+        {
+          "code": "16gb",
+          "label": "16 GB"
+        },
+        {
+          "code": "32gb",
+          "label": "32 GB"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "storage",
+      "description": "Built-in SSD storage",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'storage'?",
+      "levels": [
+        {
+          "code": "256gb",
+          "label": "256 GB SSD"
+        },
+        {
+          "code": "512gb",
+          "label": "512 GB SSD"
+        },
+        {
+          "code": "1tb",
+          "label": "1 TB SSD"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "graphics",
+      "description": "Graphics processor",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'graphics'?",
+      "levels": [
+        {
+          "code": "integrated",
+          "label": "Integrated graphics"
+        },
+        {
+          "code": "entry_gpu",
+          "label": "Entry dedicated (RTX 3050)"
+        },
+        {
+          "code": "high_gpu",
+          "label": "High-end dedicated (RTX 4070+)"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "display",
+      "description": "Display size",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'display'?",
+      "levels": [
+        {
+          "code": "13in",
+          "label": "Compact (13.3 in)"
+        },
+        {
+          "code": "14in",
+          "label": "Standard (14 in)"
+        },
+        {
+          "code": "15in",
+          "label": "Large (15.6 in+)"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "battery",
+      "description": "Battery life on a charge",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'battery'?",
+      "levels": [
+        {
+          "code": "up_to_8h",
+          "label": "Up to 8 hours"
+        },
+        {
+          "code": "8_12h",
+          "label": "8 – 12 hours"
+        },
+        {
+          "code": "12h_plus",
+          "label": "12 hours+"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "os",
+      "description": "Operating system",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'os'?",
+      "levels": [
+        {
+          "code": "windows",
+          "label": "Windows"
+        },
+        {
+          "code": "macos",
+          "label": "macOS"
+        },
+        {
+          "code": "chromeos",
+          "label": "ChromeOS"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    },
+    {
+      "feature_name": "touchscreen",
+      "description": "Touchscreen support",
+      "section": "B1_rating",
+      "question_type": "rating",
+      "prompt": "How desirable is each level of 'touchscreen'?",
+      "levels": [
+        {
+          "code": "no_touch",
+          "label": "No touchscreen"
+        },
+        {
+          "code": "touch",
+          "label": "Touchscreen"
+        }
+      ],
+      "status": "active",
+      "scale": {
+        "min": 1,
+        "max": 5
+      }
+    }
+  ]
+}
