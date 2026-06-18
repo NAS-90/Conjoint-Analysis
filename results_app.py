@@ -20,6 +20,6 @@ import streamlit as st
 
 from dashboard.results_dashboard import render_results_dashboard
 
-st.set_page_config(page_title="ACBC 调研结果 / Conjoint Results", layout="wide")
+st.set_page_config(page_title="Conjoint Results", layout="wide")
 
 render_results_dashboard()

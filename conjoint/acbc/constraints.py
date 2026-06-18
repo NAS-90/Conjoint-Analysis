@@ -1,7 +1,7 @@
 """B1 → B2 → B4 bridge: derive an anchor and apply hard constraints.
 
 In the linear questionnaire there is no Build-Your-Own step; the B4 pair
-comparison concepts are generated "根据 B1、B2 的回答" instead. This module is
+comparison concepts are generated "from the B1/B2 answers" instead. This module is
 the pure (Streamlit-free) glue:
 
 * :func:`anchor_from_ratings` — turn the B1 desirability ratings into the
