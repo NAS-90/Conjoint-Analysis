@@ -99,7 +99,7 @@ _nn_tech_path = paths["nn"]
 _nn_wt_path = paths["nn_weighted"]
 _conjoint_ready = _imp_path.exists() and _nn_tech_path.exists() and _nn_wt_path.exists()
 
-with st.sidebar.expander("📊 Results summary", expanded=False):
+with st.sidebar.expander("Results summary", expanded=False):
     if _imp_path.exists():
         _imp_df = load_importance(_imp_path)
         st.caption("Relative importance per attribute")
@@ -205,7 +205,7 @@ if os.path.exists(nn_path):
 
         # Display Alerts with Strategic Business Insights
         if top_neighbor_dist < 0.05:
-            st.error(f"🔴 Cannibalization Risk (Dist: {top_neighbor_dist:.4f})")
+            st.error(f"Cannibalization Risk (Dist: {top_neighbor_dist:.4f})")
             st.markdown(
                 f"**{selected_product}** and **{closest_neighbor_name}** are near-identical in the market. "
                 "Keeping both creates internal competition and dilutes market share."
@@ -213,11 +213,11 @@ if os.path.exists(nn_path):
             if diffs is not None:
                 overlap_features = ", ".join(diffs.index[:5])
                 st.markdown(f"**Overlapping specs:** {overlap_features}")
-                st.markdown("**💡 Recommendation:** Consider rationalizing/removing one product from the portfolio. "
+                st.markdown("**Recommendation:** Consider rationalizing/removing one product from the portfolio. "
                            "Consolidating into a single SKU can reduce costs and strengthen positioning.")
 
         elif top_neighbor_dist < 0.50:
-            st.warning(f"🟡 Significant Overlap (Dist: {top_neighbor_dist:.4f})")
+            st.warning(f"Significant Overlap (Dist: {top_neighbor_dist:.4f})")
             st.markdown(
                 f"**{selected_product}** competes closely with **{closest_neighbor_name}**. "
                 "Consumers may struggle to distinguish between the two."
@@ -230,11 +230,11 @@ if os.path.exists(nn_path):
                 diff_features = ", ".join(diff_candidates[:3])
                 st.markdown(f"**Shared ground:** {shared_features}")
                 st.markdown(f"**Key differentiators to leverage:** {diff_features}")
-                st.markdown("**💡 Recommendation:** Sharpen the value proposition — emphasize the differentiating "
+                st.markdown("**Recommendation:** Sharpen the value proposition — emphasize the differentiating "
                            "features in marketing to carve out distinct customer segments.")
 
         else:
-            st.success(f"🟢 Unique Positioning (Dist: {top_neighbor_dist:.4f})")
+            st.success(f"Unique Positioning (Dist: {top_neighbor_dist:.4f})")
             st.markdown(
                 f"**{selected_product}** is well-differentiated from its nearest competitor "
                 f"**{closest_neighbor_name}**. It occupies a distinct market position."
@@ -242,10 +242,10 @@ if os.path.exists(nn_path):
             if diffs is not None:
                 strengths = ", ".join(diffs.tail(5).index[::-1])
                 st.markdown(f"**Competitive advantages:** {strengths}")
-                st.markdown("**💡 Recommendation:** Invest in distribution and marketing to maximize reach. "
+                st.markdown("**Recommendation:** Invest in distribution and marketing to maximize reach. "
                            "This product fills a unique gap in the portfolio — protect and develop it.")
 
-        st.caption("Alert Logic: 🔴 Cannibalization < 0.05 | 🟡 Overlap < 0.50 | 🟢 Unique > 0.50")
+        st.caption("Alert Logic: Cannibalization < 0.05 | Overlap < 0.50 | Unique > 0.50")
 
     # --- Module 5: Customer importance + technical vs weighted comparison ---
     importance_path = paths["importance"]
