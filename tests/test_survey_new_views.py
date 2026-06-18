@@ -103,8 +103,6 @@ def test_summary_merges_every_section_into_one_frame() -> None:
         "st.session_state[STAGE_ANSWERS_KEY] = {\n"
         "    'background': {'purchase_timing': 'Within 3 months',\n"
         "                   'usage': ['Gaming', 'Photography']},\n"
-        "    'ratings': {a.feature_name: {lv.code: 3 for lv in a.levels}\n"
-        "                for a in spec.active_attributes},\n"
         "    'calibration': {'0': 5, '1': 2},\n"
         "    'wtp': {'camera': 'up_to_100', 'battery': 'none'},\n"
         "}\n"
@@ -127,10 +125,9 @@ def test_summary_merges_every_section_into_one_frame() -> None:
         "background",
         "calibration",
         "musthave",
-        "rating",
         "tournament",
         "wtp",
     ]
-    # 2 background + 25 ratings + 2 constraints + 2 tournament + 2 calibration + 2 wtp.
-    assert at.session_state["_rows"] == 35
+    # 2 background + 2 constraints + 2 tournament + 2 calibration + 2 wtp.
+    assert at.session_state["_rows"] == 10
     assert at.session_state["_valid"] == []

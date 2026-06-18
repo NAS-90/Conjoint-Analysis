@@ -1,11 +1,11 @@
 """B4 — pair comparison / choice tasks (the core of the conjoint).
 
-Each screen shows **two** complete phone concepts and the respondent picks the
+Each screen shows **two** complete product concepts and the respondent picks the
 one they prefer in a realistic trade-off. This is the core choice data behind
 part-worth utilities and attribute importance.
 
 The concepts are drawn from a pool built around the respondent's derived ideal
-(the anchor from B1 + B2), filtered to honour their B2 constraints — so every
+(the B2 anchor), filtered to honour their B2 constraints — so every
 concept is one they could plausibly consider. On Finish the long-format choice
 frame is published to :mod:`survey_views.acbc_summary` for the merged CSV and the
 flow advances to B5 (calibration).
@@ -30,11 +30,9 @@ from survey_views.navigation import (
     Step,
     advance_to,
     get_answer,
-    peek_stage,
     record_answer,
     render_sequence,
 )
-from survey_views.ratings import STAGE as RATINGS_STAGE
 from survey_views.spec_source import (
     attribute_display_name,
     format_level,
@@ -63,15 +61,15 @@ _TARGET_POOL = 16
 
 
 # ---------------------------------------------------------------------------
-# Profile pool (ratings-anchor + B2 constraints)
+# Profile pool (B2 anchor + B2 constraints)
 # ---------------------------------------------------------------------------
 def _resolve_anchor(spec: QuestionnaireSpec, must_have, unacceptable) -> Profile:
-    """The session anchor (from B2), or one freshly derived from B1 ratings."""
+    """The session anchor (from B2), or one derived from spec order as a fallback."""
     anchor = st.session_state.get(ACBC_ANCHOR_KEY)
     if isinstance(anchor, Profile):
         return anchor
     return anchor_from_ratings(
-        peek_stage(RATINGS_STAGE), spec, must_have=must_have, unacceptable=unacceptable
+        {}, spec, must_have=must_have, unacceptable=unacceptable
     )
 
 
@@ -142,8 +140,7 @@ def _task_step(task: Task, labels: dict[str, dict[str, str]]) -> Step:
 
     def render() -> bool:
         st.caption(
-            "Of the two phones below, which would you choose if these were your "
-            "only options?"
+            "Which of these two would you choose if they were your only options?"
         )
         columns = st.columns(len(task.alternatives))
         for index, (column, profile) in enumerate(zip(columns, task.alternatives)):
@@ -235,10 +232,10 @@ def render_tournament() -> None:
         return
 
     flow_header(
-        5,
-        7,
-        "Compare phones",
-        "Choose the phone you would prefer in each side-by-side comparison.",
+        4,
+        6,
+        "Compare options",
+        "Choose the option you would prefer in each side-by-side comparison.",
     )
 
     try:

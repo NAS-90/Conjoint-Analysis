@@ -11,8 +11,10 @@ On Finish this section:
 1. folds the per-level answers into ``must_have`` / ``unacceptable`` maps
    (:func:`conjoint.acbc.constraints.split_constraints`) and persists them for
    B4 / B5,
-2. derives the respondent's ideal **anchor** from the B1 ratings honouring those
-   constraints (:func:`conjoint.acbc.constraints.anchor_from_ratings`), and
+2. derives the respondent's ideal **anchor** from the spec's level order,
+   honouring those constraints
+   (:func:`conjoint.acbc.constraints.anchor_from_ratings`, called with no
+   ratings), and
 3. advances to B4 (pair comparison).
 
 Answers are recorded into the responses CSV by the summary page (stage
@@ -33,12 +35,10 @@ from survey_views.navigation import (
     Step,
     advance_to,
     get_answer,
-    peek_stage,
     record_answer,
     render_sequence,
     stage_answers,
 )
-from survey_views.ratings import STAGE as RATINGS_STAGE
 from survey_views.spec_source import (
     attribute_display_name,
     format_level,
@@ -130,9 +130,10 @@ def _persist_constraints_and_anchor() -> None:
     st.session_state[MUST_HAVE_KEY] = must_have
     st.session_state[UNACCEPTABLE_KEY] = {a: set(s) for a, s in unacceptable.items()}
 
-    ratings = peek_stage(RATINGS_STAGE)
+    # There is no B1 rating step any more, so the anchor falls back to the spec's
+    # level order, with any B2 must-have overriding it per attribute.
     anchor = anchor_from_ratings(
-        ratings, spec, must_have=must_have, unacceptable=unacceptable
+        {}, spec, must_have=must_have, unacceptable=unacceptable
     )
     st.session_state[ACBC_ANCHOR_KEY] = anchor
 
@@ -149,8 +150,8 @@ def render_constraints() -> None:
         return
 
     flow_header(
-        4,
-        7,
+        3,
+        6,
         "Any deal-breakers?",
         "Tell us if any feature is an absolute must — or something you'd never accept.",
     )

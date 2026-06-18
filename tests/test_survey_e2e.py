@@ -4,7 +4,8 @@
 reruns, so rather than walk the multi-page router we exercise the key seams by
 seeding session state and driving one section to completion:
 
-* **B1 → B2**: finishing B2 derives the ideal *anchor* from the B1 ratings; and
+* **B2 anchor**: finishing B2 derives the ideal *anchor* from the spec's level
+  order (the B1 rating step was removed), honouring any B2 constraints; and
 * a guard that price labels render with ``$`` escaped (never raw LaTeX ``$…$``).
 """
 
@@ -27,21 +28,11 @@ def _first_level_codes() -> dict[str, str]:
     return {attr.feature_name: attr.levels[0].code for attr in spec.active_attributes}
 
 
-def _b2_app_with_seeded_ratings() -> AppTest:
-    """Render B2 with B1 ratings pre-seeded so the first level scores highest."""
+def _b2_app() -> AppTest:
+    """Render B2 stand-alone (there is no ratings stage — B1 was removed)."""
     script = (
         "import sys\n"
         f"sys.path.insert(0, {str(REPO_ROOT)!r})\n"
-        "import streamlit as st\n"
-        "from conjoint import questionnaire as q\n"
-        "from survey_views.spec_source import DEFAULT_SPEC\n"
-        "from survey_views.state import STAGE_ANSWERS_KEY\n"
-        "spec = q.read_spec(DEFAULT_SPEC)\n"
-        "st.session_state[STAGE_ANSWERS_KEY] = {'ratings': {\n"
-        "    a.feature_name: {lv.code: (5 if i == 0 else 1)\n"
-        "                     for i, lv in enumerate(a.levels)}\n"
-        "    for a in spec.active_attributes\n"
-        "}}\n"
         "from survey_views.b2_constraints import render_constraints\n"
         "render_constraints()\n"
     )
@@ -49,11 +40,15 @@ def _b2_app_with_seeded_ratings() -> AppTest:
 
 
 @pytest.mark.integration
-def test_b2_finish_derives_anchor_from_ratings() -> None:
-    """With no constraints set, the anchor is the top-rated level per attribute."""
+def test_b2_finish_derives_anchor_from_spec_order() -> None:
+    """With no constraints set, the anchor is the first level per attribute.
+
+    Without B1 ratings to rank levels, ``anchor_from_ratings`` falls back to the
+    spec's level order, so the derived ideal is each attribute's first level.
+    """
     from survey_views.state import ACBC_ANCHOR_KEY
 
-    at = _b2_app_with_seeded_ratings().run()
+    at = _b2_app().run()
     # B2 pages are always complete (constraints optional) — walk to the Finish.
     for _ in range(20):
         nxt = next((b for b in at.button if b.label in _NEXT_LABELS), None)
@@ -71,21 +66,21 @@ def test_b2_finish_derives_anchor_from_ratings() -> None:
 
 
 @pytest.mark.integration
-def test_b1_price_options_escape_dollar_signs() -> None:
-    """B1's price level labels must escape ``$`` (no raw LaTeX ``$…$``)."""
+def test_price_options_escape_dollar_signs() -> None:
+    """Price level labels must escape ``$`` (no raw LaTeX ``$…$``).
+
+    Checked on B0 — the first page that lists every level now that B1 is gone.
+    """
     script = (
         "import sys\n"
         f"sys.path.insert(0, {str(REPO_ROOT)!r})\n"
-        "from survey_views.ratings import render_questionnaire\n"
-        "render_questionnaire()\n"
+        "from survey_views.b0_features import render_features_intro\n"
+        "render_features_intro()\n"
     )
     at = AppTest.from_string(script).run()
+    assert not at.exception
 
-    # B1 renders one radio per price level; the level label is the radio label.
-    price_radios = [
-        r for r in at.radio if r.key and r.key.startswith("survey_rating__price__")
-    ]
-    assert price_radios
-    joined = " ".join(r.label for r in price_radios)
+    # B0 lists every level (price included) as Markdown bullets via ``format_level``.
+    joined = " ".join(m.value for m in at.markdown)
     assert "\\$" in joined  # dollars are escaped...
     assert "$" not in joined.replace("\\$", "")  # ...with none left raw

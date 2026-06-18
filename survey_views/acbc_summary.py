@@ -3,9 +3,8 @@
 The last page of the questionnaire. It hides every analysis detail and shows a
 short confirmation plus a single "Send my responses" button that hands the
 researcher one CSV. That CSV merges every section the respondent completed —
-Part A background, B1 ratings, B2 must-have/unacceptable, B4 choices, B5
-calibration and Part C WTP — in the long format defined by
-:mod:`conjoint.acbc.responses`.
+Part A background, B2 must-have/unacceptable, B4 choices, B5 calibration and
+Part C WTP — in the long format defined by :mod:`conjoint.acbc.responses`.
 """
 
 from __future__ import annotations
@@ -20,7 +19,6 @@ from survey_views.b5_calibration import STAGE as CALIBRATION_STAGE
 from survey_views.navigation import peek_stage
 from survey_views.part_a_background import STAGE as BACKGROUND_STAGE
 from survey_views.part_c_wtp import STAGE as WTP_STAGE
-from survey_views.ratings import STAGE as RATINGS_STAGE
 from survey_views.section_source import (
     load_background_questions,
     load_wtp_features,
@@ -57,27 +55,6 @@ def _background_frame(respondent: str, attribute_levels) -> pd.DataFrame | None:
     if not records:
         return None
     return acbc_responses.assemble_background_responses(records, attribute_levels)
-
-
-def _rating_frame(respondent: str, spec, attribute_levels) -> pd.DataFrame | None:
-    answers = peek_stage(RATINGS_STAGE)
-    records = []
-    task_id = 0
-    for attr in spec.active_attributes:
-        per_level = answers.get(attr.feature_name, {}) or {}
-        for level in attr.levels:
-            rating = per_level.get(level.code)
-            if rating is None:
-                continue
-            task_id += 1
-            records.append(
-                acbc_responses.RatingResponse(
-                    respondent, task_id, attr.feature_name, level.code, int(rating)
-                )
-            )
-    if not records:
-        return None
-    return acbc_responses.assemble_rating_responses(records, attribute_levels)
 
 
 def _musthave_frame(respondent: str, attribute_levels) -> pd.DataFrame | None:
@@ -148,7 +125,6 @@ def _combined_frame(respondent: str) -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
     for frame in (
         _background_frame(respondent, attribute_levels),
-        _rating_frame(respondent, spec, attribute_levels),
         _musthave_frame(respondent, attribute_levels),
     ):
         if frame is not None and not frame.empty:

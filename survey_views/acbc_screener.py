@@ -125,8 +125,8 @@ def render_screener() -> None:
     flow_header(
         2,
         3,
-        "Would you consider these phones?",
-        "For each example phone, tell us whether you would consider buying it.",
+        "Would you consider these options?",
+        "For each example option, tell us whether you would consider buying it.",
     )
 
     anchor = st.session_state.get(ACBC_ANCHOR_KEY)
@@ -157,7 +157,7 @@ def render_screener() -> None:
         return
 
     respondent = str(st.session_state.get(RESPONDENT_KEY, "") or "").strip() or "1"
-    st.caption(f"{len(profiles)} example phones, one per screen.")
+    st.caption(f"{len(profiles)} example options, one per screen.")
 
     st.session_state.setdefault(ACBC_SCREENER_FINISHED_KEY, False)
 

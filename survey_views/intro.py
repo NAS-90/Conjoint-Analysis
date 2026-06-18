@@ -20,10 +20,10 @@ def render_intro() -> None:
     apply_base_theme()
     # ``st.title`` (not a Markdown h1) keeps the page discoverable by the router
     # test, which asserts a title containing "survey".
-    st.title("Smartphone preferences survey")
+    st.title("Product preferences survey")
     st.markdown(
         "<p class='lead'>Welcome, and thank you for taking part. This short survey "
-        "asks which smartphone features matter most to you — there are no right or "
+        "asks which features matter most to you — there are no right or "
         "wrong answers, just tell us what you would prefer.</p>",
         unsafe_allow_html=True,
     )
@@ -38,10 +38,10 @@ def render_intro() -> None:
                 ),
                 (
                     "Share your preferences",
-                    "Rate the feature options and flag any deal-breakers.",
+                    "Flag any deal-breakers — features you must have or would never accept.",
                 ),
                 (
-                    "Compare a few phones",
+                    "Compare a few options",
                     "Pick your favourite in some side-by-side comparisons.",
                 ),
                 (
