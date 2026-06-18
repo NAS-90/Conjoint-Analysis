@@ -91,78 +91,42 @@ def test_survey_router_runs_default_intro_page() -> None:
 
 
 @pytest.mark.unit
-def test_flow_pages_gates_sidebar_by_mode() -> None:
-    """Each method shows only its own pages; Welcome is always first."""
-    from survey import flow_pages
-    from survey_views.intro import MODE_ACBC, MODE_RATING
+def test_ordered_pages_is_linear() -> None:
+    """The survey is one fixed linear flow — no mode gating."""
+    from survey import ordered_pages
 
-    sentinels = dict(
+    pages = ordered_pages(
         intro="intro",
-        questionnaire="ratings",
-        byo="byo",
-        screener="screener",
-        tournament="tournament",
+        part_a="part_a",
+        b0="b0",
+        b1="ratings",
+        b2="b2",
+        b4="tournament",
+        b5="b5",
+        part_c="part_c",
         summary="summary",
     )
-
-    rating = flow_pages(MODE_RATING, **sentinels)
-    assert rating == ["intro", "ratings"]
-    assert "byo" not in rating and "tournament" not in rating
-
-    acbc = flow_pages(MODE_ACBC, **sentinels)
-    assert acbc == ["intro", "byo", "screener", "tournament", "summary"]
-    assert "ratings" not in acbc
-
-    # Unset mode (before a choice is made) defaults to the ACBC flow.
-    assert flow_pages(None, **sentinels) == acbc
+    assert pages == [
+        "intro",
+        "part_a",
+        "b0",
+        "ratings",
+        "b2",
+        "tournament",
+        "b5",
+        "part_c",
+        "summary",
+    ]
 
 
 @pytest.mark.integration
-def test_mode_choice_not_stored_in_router_widget_key() -> None:
-    """The router's mode key must not be a widget key, or "Start" loses it.
-
-    Regression (browser-only, invisible to AppTest's navigation model): the
-    intro radio used to be keyed directly on ``SURVEY_MODE_KEY`` — the same key
-    the router's ``flow_pages`` gate reads. The "Start" button calls
-    ``st.switch_page``, which reruns the script on a *different* page where the
-    intro radio is not rendered; Streamlit then garbage-collects that widget's
-    value, the router falls back to the ACBC default, and the rating page (not
-    in the ACBC flow) becomes unreachable — clicking "Start" for "Rate each
-    option" silently snapped back to Welcome. The choice now lives in a plain
-    key mirrored from a separate radio widget key, so it survives that rerun.
-    """
-    from survey_views.intro import MODE_RATING
-    from survey_views.state import SURVEY_MODE_KEY
-
+def test_welcome_has_no_mode_toggle() -> None:
+    """The quick-Rating mode was removed — Welcome just starts the one flow."""
     at = AppTest.from_file(str(SURVEY_APP)).run()
-    # No widget may be keyed on the router's mode key (else switch_page's rerun
-    # garbage-collects the chosen mode and the gate reverts to the default).
-    assert all(r.key != SURVEY_MODE_KEY for r in at.radio)
-
-    # Selecting the rating mode still populates the router-facing key (the
-    # widget->plain-key mirror callback is wired), so the gate sees the choice.
-    at.radio[0].set_value(MODE_RATING).run()
     assert not at.exception
-    assert at.session_state[SURVEY_MODE_KEY] == MODE_RATING
-
-
-@pytest.mark.unit
-def test_guided_profiles_match_real_attributes() -> None:
-    """Every guided profile must select >=1 real attribute of the bundled spec.
-
-    Regression: the profiles previously listed tractor/car attributes that
-    matched nothing in the smartphone spec, so "Guided profile" silently fell
-    back to the full questionnaire every time.
-    """
-    from conjoint import questionnaire as q
-
-    from survey_views.ratings import GUIDED_PROFILES, _matches_profile
-    from survey_views.spec_source import DEFAULT_SPEC
-
-    spec = q.read_spec(DEFAULT_SPEC)
-    for name, keywords in GUIDED_PROFILES.items():
-        matched = [a for a in spec.active_attributes if _matches_profile(a, keywords)]
-        assert matched, f"guided profile {name!r} matches no attribute"
+    # No mode radio remains; a single "Start" button kicks off the linear flow.
+    assert not at.radio
+    assert any(b.label.startswith("Start") for b in at.button)
 
 
 def _ratings_app() -> AppTest:
@@ -183,10 +147,6 @@ def _ratings_app() -> AppTest:
 
 def _rating_radios(at: AppTest) -> list:
     return [r for r in at.radio if r.key and r.key.startswith("survey_rating__")]
-
-
-def _questionnaire_flow(at: AppTest):
-    return next(s for s in at.selectbox if s.label == "Questionnaire flow")
 
 
 def _next_button(at: AppTest):
@@ -251,51 +211,24 @@ def test_advancing_moves_to_next_attribute() -> None:
 
 
 @pytest.mark.integration
-def test_custom_attribute_flow_scopes_the_step_sequence() -> None:
+def test_finishing_ratings_records_all_attributes() -> None:
+    """B1 captures a rating for every active attribute/level in stage state.
+
+    The download moved to the final Thank-you page, so B1 now just records the
+    ratings (and, in the full router, advances to B2). We assert the captured
+    stage answers cover every active attribute.
+    """
+    from survey_views.state import STAGE_ANSWERS_KEY
+
     at = _ratings_app().run()
-    _questionnaire_flow(at).set_value("Choose attributes").run()
-
-    attr_selector = next(
-        m for m in at.multiselect if m.label == "Attributes to include"
-    )
-    attr_selector.set_value(["price", "camera"]).run()
-
-    assert not at.exception
-    radios = _rating_radios(at)
-    # First page = first chosen attribute (still in spec order → price).
-    assert all(r.key.startswith("survey_rating__price__") for r in radios)
-    assert len(radios) == EXPECTED_ACTIVE_SPEC["price"]
-
-
-@pytest.mark.integration
-def test_finishing_complete_ratings_yields_valid_responses() -> None:
-    at = _ratings_app().run()
-
     for _ in range(EXPECTED_ATTRIBUTE_COUNT):
         _advance(at)
 
     assert not at.exception
-    assert any("recorded" in msg.value.lower() for msg in at.success)
-
-
-@pytest.mark.integration
-def test_finishing_blank_pages_warns_but_still_validates() -> None:
-    """Skipping every page by leaving blanks then forcing finish still validates."""
-    at = _ratings_app().run()
-    # Custom flow with no attributes selected → no steps; but Finish needs to
-    # round-trip the per-attribute restriction. Instead we exhaust all pages
-    # while leaving the first level of every attribute blank.
-    for _ in range(EXPECTED_ATTRIBUTE_COUNT):
-        radios = _rating_radios(at)
-        # Rate everything so Next is enabled — we want a complete CSV here.
-        # Blank-tolerance is exercised by the validation-only test below.
-        for radio in radios:
-            radio.set_value(3)
-        at.run()
-        _next_button(at).click().run()
-
-    assert not at.exception
-    assert any("recorded" in msg.value.lower() for msg in at.success)
+    recorded = at.session_state[STAGE_ANSWERS_KEY]["ratings"]
+    assert set(recorded) == set(EXPECTED_ACTIVE_SPEC)
+    for name, n_levels in EXPECTED_ACTIVE_SPEC.items():
+        assert len(recorded[name]) == n_levels
 
 
 @pytest.mark.integration

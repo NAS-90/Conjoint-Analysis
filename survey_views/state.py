@@ -12,22 +12,15 @@ from __future__ import annotations
 #: ``responses.csv`` on the ratings page.
 RESPONDENT_KEY = "survey_respondent_id"
 
-#: The ratings :class:`st.Page`, stashed by the router so the intro page's
-#: "Start" button can :func:`st.switch_page` to it.
+#: The B1 ratings :class:`st.Page`, stashed by the router so the intro page's
+#: "Start" button (and B0's "I'm ready") can :func:`st.switch_page` to it.
 QUESTIONNAIRE_PAGE_KEY = "survey_questionnaire_page"
 
-#: The respondent's questionnaire routing choice on the ratings page.
-QUESTION_FLOW_KEY = "survey_question_flow"
-
-#: The selected attribute names when the respondent chooses a custom subset.
-ATTRIBUTE_SELECTION_KEY = "survey_attribute_selection"
-
-#: The guided profile selected when the respondent wants a shorter focused flow.
-GUIDED_PROFILE_KEY = "survey_guided_profile"
-
-#: Active sequential stage identifier (``ratings`` / ``acbc_byo`` /
-#: ``acbc_screener`` / ``acbc_tournament``). Changing the active stage resets
-#: :data:`STEP_INDEX_KEY` to ``0`` so the new flow starts at its first step.
+#: Active sequential stage identifier (``background`` / ``ratings`` /
+#: ``musthave`` / ``acbc_tournament`` / ``calibration`` / ``wtp``). Changing the
+#: active stage resets :data:`STEP_INDEX_KEY` to ``0`` so the new section starts
+#: at its first step. Read another stage's answers with
+#: :func:`survey_views.navigation.peek_stage` (no reset) — never ``stage_answers``.
 STAGE_KEY = "survey_stage"
 
 #: Cursor inside the active stage's step sequence — incremented by Next and
@@ -40,24 +33,32 @@ STEP_INDEX_KEY = "survey_stage_step_index"
 #: ratings should not overwrite each other).
 STAGE_ANSWERS_KEY = "survey_stage_answers"
 
-#: Survey "mode" — ``rating`` (legacy OLS path) or ``acbc`` (BYO + Screener
-#: + Tournament). Picked on the intro page; consumed by the router's
-#: ``flow_pages`` gate. This is a **plain** (non-widget) key on purpose: the
-#: intro radio writes its choice here via a callback so the mode survives the
-#: ``st.switch_page`` rerun, during which the intro page (and its radio widget)
-#: is not rendered and Streamlit would garbage-collect a widget-keyed value.
-SURVEY_MODE_KEY = "survey_mode"
-
-#: Widget key for the intro mode radio. Kept distinct from
-#: :data:`SURVEY_MODE_KEY` so the router never reads a value that vanishes when
-#: the radio stops rendering (see the note above).
-SURVEY_MODE_CHOICE_KEY = "survey_mode_choice"
-
 #: ACBC ``st.Page`` references stashed by the router for cross-page nav.
 ACBC_BYO_PAGE_KEY = "survey_acbc_byo_page"
 ACBC_SCREENER_PAGE_KEY = "survey_acbc_screener_page"
 ACBC_TOURNAMENT_PAGE_KEY = "survey_acbc_tournament_page"
 ACBC_SUMMARY_PAGE_KEY = "survey_acbc_summary_page"
+
+#: Linear-flow ``st.Page`` references stashed by the router so each section's
+#: "Next/Finish" can :func:`st.switch_page` to the following section. B1 reuses
+#: :data:`QUESTIONNAIRE_PAGE_KEY`, B4 reuses :data:`ACBC_TOURNAMENT_PAGE_KEY`,
+#: and the final page reuses :data:`ACBC_SUMMARY_PAGE_KEY`.
+PART_A_PAGE_KEY = "survey_part_a_page"
+B0_PAGE_KEY = "survey_b0_page"
+B2_PAGE_KEY = "survey_b2_page"
+B5_PAGE_KEY = "survey_b5_page"
+PART_C_PAGE_KEY = "survey_part_c_page"
+
+#: The respondent's ideal :class:`~conjoint.acbc.design.Profile`, derived from
+#: B1 ratings + B2 constraints (:func:`conjoint.acbc.constraints.anchor_from_ratings`).
+#: Consumed by B4 (pool generation) and B5 (calibration concepts). The value
+#: string is unchanged from the legacy BYO key so session continuity holds.
+ACBC_ANCHOR_KEY = "acbc_anchor"
+
+#: B2 hard constraints persisted for B4/B5: ``{attribute: required_level}`` and
+#: ``{attribute: {excluded_level, ...}}``.
+MUST_HAVE_KEY = "survey_must_have"
+UNACCEPTABLE_KEY = "survey_unacceptable"
 
 
 def rating_key(column: str) -> str:
