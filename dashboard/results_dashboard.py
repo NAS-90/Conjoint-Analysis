@@ -163,7 +163,7 @@ def render_results_dashboard() -> None:
     """Render the standalone ACBC results page (called from ``results_app.py``)."""
     import streamlit as st
 
-    st.title("📊 Conjoint Results")
+    st.title("Conjoint Results")
     st.caption(
         "Hierarchical Bayes part-worth utilities fitted from the B4 choices, covering "
         "attribute importance, part-worth utilities, willingness to pay, market "
@@ -252,7 +252,7 @@ def _load_responses(st, ctx: SurveyContext) -> pd.DataFrame | None:
 # Section 1 — Overview
 # ---------------------------------------------------------------------------
 def _render_overview(st, results: SurveyResults) -> None:
-    st.subheader("① Overview & convergence")
+    st.subheader("Overview & convergence")
     col1, col2, col3 = st.columns(3)
     col1.metric("Respondents", f"{results.n_respondents}")
     col2.metric("Tournament tasks", f"{results.n_tournament_tasks}")
@@ -262,7 +262,7 @@ def _render_overview(st, results: SurveyResults) -> None:
         f"{results.rhat_max:.2f}",
         help="Gelman-Rubin < 1.1 indicates convergence. It runs high with few preview iterations; just raise the iteration count.",
     )
-    col3.caption("✅ Converged" if converged else "⚠️ Preview run (consider raising HB iterations)")
+    col3.caption("Converged" if converged else "Preview run (consider raising HB iterations)")
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +271,7 @@ def _render_overview(st, results: SurveyResults) -> None:
 def _render_importance(st, results: SurveyResults, ctx: SurveyContext) -> None:
     import plotly.express as px
 
-    st.subheader("② Attribute importance")
+    st.subheader("Attribute importance")
     imp = results.importance.copy()
     imp["Attribute"] = imp["attribute"].map(attr_name)
     imp = imp.sort_values("relative_importance")
@@ -314,7 +314,7 @@ def _partworths_long(results: SurveyResults, ctx: SurveyContext) -> pd.DataFrame
 def _render_partworths(st, results: SurveyResults, ctx: SurveyContext) -> None:
     import plotly.express as px
 
-    st.subheader("③ Part-worth utilities")
+    st.subheader("Part-worth utilities")
     st.caption("Zero-centered \"diffs\" scale (mean range per attribute = 100); higher utility means more preferred.")
     tidy = _partworths_long(results, ctx)
     attributes = list(results.rescaled_utilities.keys())
@@ -350,7 +350,7 @@ def _render_partworths(st, results: SurveyResults, ctx: SurveyContext) -> None:
 def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
     import plotly.express as px
 
-    st.subheader("④ Willingness-to-pay")
+    st.subheader("Willingness-to-pay")
     left, right = st.columns(2)
 
     with left:
@@ -422,7 +422,7 @@ def _default_product_spec(ctx: SurveyContext, index: int) -> dict:
 def _render_simulator(st, results: SurveyResults, ctx: SurveyContext) -> None:
     import plotly.express as px
 
-    st.subheader("⑤ Market simulator")
+    st.subheader("Market simulator")
     st.caption("Configure competing products and compute share of preference from each respondent's HB utilities.")
 
     n_products = int(st.number_input("Number of products", min_value=2, max_value=4, value=2, step=1))
@@ -488,7 +488,7 @@ def _render_simulator(st, results: SurveyResults, ctx: SurveyContext) -> None:
 def _render_calibration(st, results: SurveyResults) -> None:
     import plotly.express as px
 
-    st.subheader("⑥ Purchase likelihood (B5)")
+    st.subheader("Purchase likelihood (B5)")
     cal = results.calibration
     if cal is None:
         st.info("This dataset has no B5 calibration records.")
@@ -509,7 +509,7 @@ def _render_calibration(st, results: SurveyResults) -> None:
 def _render_segments(st, results: SurveyResults, ctx: SurveyContext) -> None:
     import plotly.express as px
 
-    st.subheader("⑦ Respondent segments (Part A)")
+    st.subheader("Respondent segments (Part A)")
     background = results.background
     if background is None or not background.questions:
         st.info("This dataset has no Part A (background) records.")

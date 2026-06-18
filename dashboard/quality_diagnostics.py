@@ -122,7 +122,7 @@ def render_quality_diagnostics() -> None:
     """Render the ACBC quality + diagnostics page (called from ``app.py``)."""
     import streamlit as st
 
-    st.title("📋 ACBC data quality & diagnostics")
+    st.title("ACBC data quality & diagnostics")
     st.caption(
         "§8 data cleaning + §9.10 model diagnostics. Defaults to synthetic demo "
         "data (with injected straight-lining / illogical / incomplete / speeding "
@@ -203,14 +203,14 @@ def _render_diagnostic_cards(st, analysis: AcbcAnalysis) -> None:
         delta=f"{hit.hit_rate - hit.random_baseline:+.1%} vs random",
         help=f"Held out {hit.n_holdout_tasks} tasks, random baseline {hit.random_baseline:.1%}. Higher is better.",
     )
-    col1.caption("✅ Beats random" if hit.beats_random else "⚠️ Not better than random")
+    col1.caption("Beats random" if hit.beats_random else "Not better than random")
 
     median_rlh = float(analysis.rlh["rlh"].median()) if not analysis.rlh.empty else float("nan")
     col2.metric("Median individual RLH", f"{median_rlh:.3f}", help="§9.6 computed with each respondent's β_i; near random level means poor answer quality.")
 
     if analysis.monotonicity is not None:
         ok = analysis.monotonicity.monotonic
-        col3.metric("Price monotonicity", "✅ Plausible" if ok else "❌ Anomalous")
+        col3.metric("Price monotonicity", "Plausible" if ok else "Anomalous")
         col3.caption("Pricier → lower utility (expected)" if ok else f"Violations: {analysis.monotonicity.violations}")
     else:
         col3.metric("Price monotonicity", "—")
@@ -222,7 +222,7 @@ def _render_diagnostic_cards(st, analysis: AcbcAnalysis) -> None:
         f"{dom.relative_importance:.1%}",
         help=f"Most important attribute: {dom.attribute}. Above {dom.threshold:.0%} is treated as implausible dominance.",
     )
-    col4.caption("❌ Single attribute over-dominates" if dom.dominates else f"✅ {dom.attribute} does not over-dominate")
+    col4.caption("Single attribute over-dominates" if dom.dominates else f"{dom.attribute} does not over-dominate")
 
 
 def _render_importance(st, analysis: AcbcAnalysis) -> None:
