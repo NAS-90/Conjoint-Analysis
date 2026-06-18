@@ -2,7 +2,7 @@
 
 Decoupled from the analysis dashboard (``app.py``): a respondent opens this
 app on its own URL and works through **one linear questionnaire**, modelled on
-the Part A / Part B (B0–B5) / Part C structure of the reference design.
+the Part A / Part B (B0, B2, B4, B5) / Part C structure of the reference design.
 
 Launch with::
 
@@ -15,11 +15,9 @@ Routes (rendered in the sidebar nav, grouped under "Survey", in order):
   (:mod:`survey_views.part_a_background`).
 * **B0 · About the features** — attribute & level explanation
   (:mod:`survey_views.b0_features`).
-* **B1 · Rate the features** — per-level desirability
-  (:mod:`survey_views.ratings`).
 * **B2 · Deal-breakers** — must-have / unacceptable level constraints
   (:mod:`survey_views.b2_constraints`); derives the ideal anchor.
-* **B4 · Compare phones** — pair (2-up) choice tasks
+* **B4 · Compare options** — pair (2-up) choice tasks
   (:mod:`survey_views.acbc_tournament`).
 * **B5 · Would you buy it?** — 0–5 purchase-probability calibration
   (:mod:`survey_views.b5_calibration`).
@@ -27,7 +25,8 @@ Routes (rendered in the sidebar nav, grouped under "Survey", in order):
   (:mod:`survey_views.part_c_wtp`).
 * **Thank you** — merged responses CSV (:mod:`survey_views.acbc_summary`).
 
-B3 (importance-of-difference) is intentionally not built yet.
+B1 (per-level desirability ratings) and B3 (importance-of-difference) are
+intentionally not part of this flow.
 """
 
 from __future__ import annotations
@@ -49,7 +48,6 @@ from survey_views.b5_calibration import render_calibration  # noqa: E402
 from survey_views.intro import render_intro  # noqa: E402
 from survey_views.part_a_background import render_background  # noqa: E402
 from survey_views.part_c_wtp import render_wtp  # noqa: E402
-from survey_views.ratings import render_questionnaire  # noqa: E402
 from survey_views.state import (  # noqa: E402
     ACBC_SUMMARY_PAGE_KEY,
     ACBC_TOURNAMENT_PAGE_KEY,
@@ -58,7 +56,6 @@ from survey_views.state import (  # noqa: E402
     B5_PAGE_KEY,
     PART_A_PAGE_KEY,
     PART_C_PAGE_KEY,
-    QUESTIONNAIRE_PAGE_KEY,
 )
 
 
@@ -67,7 +64,6 @@ def ordered_pages(
     intro,
     part_a,
     b0,
-    b1,
     b2,
     b4,
     b5,
@@ -79,14 +75,14 @@ def ordered_pages(
     Kept as a pure function so the order can be unit-tested without a running
     app. There is no longer a mode gate — everyone takes the same flow.
     """
-    return [intro, part_a, b0, b1, b2, b4, b5, part_c, summary]
+    return [intro, part_a, b0, b2, b4, b5, part_c, summary]
 
 
 def main() -> None:
     """Configure the page and run the survey navigation router."""
     st.set_page_config(
-        page_title="Smartphone preferences survey",
-        page_icon=":material/smartphone:",
+        page_title="Product preferences survey",
+        page_icon=":material/category:",
         layout="centered",
     )
 
@@ -109,12 +105,6 @@ def main() -> None:
         icon=":material/menu_book:",
         url_path="features",
     )
-    questionnaire_page = st.Page(
-        render_questionnaire,
-        title="Rate the features",
-        icon=":material/star:",
-        url_path="ratings",
-    )
     b2_page = st.Page(
         render_constraints,
         title="Deal-breakers",
@@ -123,7 +113,7 @@ def main() -> None:
     )
     tournament_page = st.Page(
         render_tournament,
-        title="Compare phones",
+        title="Compare options",
         icon=":material/balance:",
         url_path="compare",
     )
@@ -150,7 +140,6 @@ def main() -> None:
     # following section.
     st.session_state[PART_A_PAGE_KEY] = part_a_page
     st.session_state[B0_PAGE_KEY] = b0_page
-    st.session_state[QUESTIONNAIRE_PAGE_KEY] = questionnaire_page
     st.session_state[B2_PAGE_KEY] = b2_page
     st.session_state[ACBC_TOURNAMENT_PAGE_KEY] = tournament_page
     st.session_state[B5_PAGE_KEY] = b5_page
@@ -161,7 +150,6 @@ def main() -> None:
         intro=intro_page,
         part_a=part_a_page,
         b0=b0_page,
-        b1=questionnaire_page,
         b2=b2_page,
         b4=tournament_page,
         b5=b5_page,

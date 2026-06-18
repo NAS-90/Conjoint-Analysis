@@ -110,7 +110,7 @@ def render_byo() -> None:
     flow_header(
         1,
         3,
-        "Build your ideal phone",
+        "Build your ideal product",
         "Pick the option you would most prefer for each feature.",
     )
 
@@ -135,7 +135,7 @@ def render_byo() -> None:
         if anchor is None:
             anchor = _persist_anchor()
 
-        st.success("Thanks! Here is the ideal phone you described.")
+        st.success("Thanks! Here is the ideal product you described.")
         if anchor is not None:
             labels = level_label_map(spec)
             with st.container(border=True):

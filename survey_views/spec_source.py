@@ -5,9 +5,10 @@ The survey ships with a committed ``questionnaire_spec.json`` (generated from
 respondent-facing app loads this bundled spec silently — no facilitator UI is
 rendered so the sidebar stays clean for the respondent.
 
-Facilitators can still override the spec by replacing ``questionnaire_spec.json``
-on disk or by passing ``?spec=<path>`` as a query parameter when running the
-survey locally.
+Facilitators can run **any product** without editing the committed default by
+pointing the ``SURVEY_SPEC`` env var at that product's spec JSON (mirrors
+``section_source``'s ``SURVEY_WORKBOOK``), by passing ``?spec=<path>`` as a query
+parameter, or by replacing ``questionnaire_spec.json`` on disk.
 
 All non-trivial logic lives in :mod:`conjoint.questionnaire`; this module is the
 thin Streamlit-facing adapter.
@@ -15,6 +16,7 @@ thin Streamlit-facing adapter.
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -27,6 +29,9 @@ from survey_views.theme import safe_md
 #: Repo root (this file lives in ``<root>/survey_views/``).
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SPEC = ROOT / "questionnaire_spec.json"
+#: Env-var override for the active spec (mirrors ``section_source.SURVEY_WORKBOOK``),
+#: so any product can be served without overwriting the committed default.
+SPEC_ENV_VAR = "SURVEY_SPEC"
 
 
 @st.cache_data(show_spinner=False)
@@ -55,13 +60,29 @@ def _spec_path_override() -> Path | None:
     return Path(str(raw))
 
 
+def _resolve_spec_path() -> Path:
+    """Active spec path, most specific first.
+
+    ``?spec=<path>`` query param → ``$SURVEY_SPEC`` env var → bundled
+    :data:`DEFAULT_SPEC`. The env var lets a facilitator serve any product
+    without touching the committed default file.
+    """
+    override = _spec_path_override()
+    if override is not None:
+        return override
+    env_path = os.environ.get(SPEC_ENV_VAR)
+    if env_path:
+        return Path(env_path)
+    return DEFAULT_SPEC
+
+
 def load_spec() -> QuestionnaireSpec | None:
-    """Load the bundled questionnaire spec (respondent-facing — no sidebar UI).
+    """Load the active questionnaire spec (respondent-facing — no sidebar UI).
 
     Returns ``None`` (after a silent error) if the spec file cannot be found,
     so callers can early-return without crashing the page.
     """
-    spec_path = _spec_path_override() or DEFAULT_SPEC
+    spec_path = _resolve_spec_path()
     if not Path(spec_path).exists():
         st.error(
             "The questionnaire is not configured yet. Please contact the survey "

@@ -6,8 +6,8 @@ declares its ``Step`` sequence; this module owns step navigation in
 ``st.session_state`` and renders the surrounding chrome (progress bar +
 Back/Next buttons).
 
-The single-page-per-question UX in :mod:`survey_views.ratings`, and the ACBC
-BYO / Screener / Tournament views added in later phases, all run on top of
+The single-page-per-question UX in the linear Part A / B / C sections, and the
+ACBC BYO / Screener / Tournament views added in later phases, all run on top of
 this controller.
 
 The controller is intentionally framework-agnostic about *what* a step

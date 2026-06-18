@@ -71,8 +71,8 @@ def render_wtp() -> None:
     """Render Part C (one upgrade per screen)."""
     apply_base_theme()
     flow_header(
-        7,
-        7,
+        6,
+        6,
         "Paying a bit extra",
         "Almost done — tell us which upgrades would be worth paying more for.",
     )

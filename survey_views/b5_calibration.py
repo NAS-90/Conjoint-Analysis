@@ -1,6 +1,6 @@
 """B5 — purchase-probability calibration.
 
-The pair comparison (B4) only reveals *which* of two phones a respondent
+The pair comparison (B4) only reveals *which* of two options a respondent
 prefers, not whether they would actually buy any of them. Calibration fills that
 gap: the respondent sees a few complete concepts and gives each a 0–5 purchase
 probability (0 = would definitely not buy, 5 = would definitely buy).
@@ -23,11 +23,9 @@ from survey_views.navigation import (
     Step,
     advance_to,
     get_answer,
-    peek_stage,
     record_answer,
     render_sequence,
 )
-from survey_views.ratings import STAGE as RATINGS_STAGE
 from survey_views.spec_source import (
     attribute_display_name,
     format_level,
@@ -55,12 +53,12 @@ _PROBABILITY_OPTIONS: tuple[int, ...] = (0, 1, 2, 3, 4, 5)
 
 
 def _resolve_anchor(spec: QuestionnaireSpec, must_have, unacceptable) -> Profile:
-    """The session anchor, or a fresh one derived from ratings as a fallback."""
+    """The session anchor (from B2), or one derived from spec order as a fallback."""
     anchor = st.session_state.get(ACBC_ANCHOR_KEY)
     if isinstance(anchor, Profile):
         return anchor
     return anchor_from_ratings(
-        peek_stage(RATINGS_STAGE), spec, must_have=must_have, unacceptable=unacceptable
+        {}, spec, must_have=must_have, unacceptable=unacceptable
     )
 
 
@@ -106,7 +104,7 @@ def _concept_step(
 
     def render() -> bool:
         st.caption(
-            "Imagine this phone is on sale at a fair price. "
+            "Imagine this option is on sale at a fair price. "
             "0 = would definitely not buy · 5 = would definitely buy."
         )
         with st.container(border=True):
@@ -123,7 +121,7 @@ def _concept_step(
         except (TypeError, ValueError):
             default_index = None
         choice = st.radio(
-            "How likely are you to buy this phone?",
+            "How likely are you to buy this option?",
             options=list(_PROBABILITY_OPTIONS),
             index=default_index,
             horizontal=True,
@@ -134,7 +132,7 @@ def _concept_step(
         record_answer(STAGE, str(index), int(choice))
         return True
 
-    return Step(identifier=f"concept_{index}", title=f"Phone {index + 1}", render=render)
+    return Step(identifier=f"concept_{index}", title=f"Option {index + 1}", render=render)
 
 
 def render_calibration() -> None:
@@ -145,10 +143,10 @@ def render_calibration() -> None:
         return
 
     flow_header(
+        5,
         6,
-        7,
         "Would you buy it?",
-        "For each phone, tell us how likely you would be to buy it.",
+        "For each option, tell us how likely you would be to buy it.",
     )
 
     must_have = st.session_state.get(MUST_HAVE_KEY, {}) or {}
@@ -168,7 +166,7 @@ def render_calibration() -> None:
     def on_complete() -> None:
         advance_to(PART_C_PAGE_KEY)
 
-    render_sequence(STAGE, steps, on_complete=on_complete, progress_label="Phone")
+    render_sequence(STAGE, steps, on_complete=on_complete, progress_label="Option")
 
 
 if __name__ == "__main__":  # pragma: no cover - manual ``streamlit run``

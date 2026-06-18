@@ -78,7 +78,7 @@ def render_background() -> None:
     apply_base_theme()
     flow_header(
         1,
-        7,
+        6,
         "A few things about you",
         "This helps us understand who is taking part. There are no right answers.",
     )

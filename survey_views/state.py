@@ -1,22 +1,18 @@
 """Shared ``st.session_state`` keys for the survey app.
 
-Centralising the keys keeps the intro page, the ratings page, the
+Centralising the keys keeps the intro page, the section views, the
 ``survey.py`` router and the ACBC stages (BYO / Screener / Tournament) in
-agreement about where the respondent id, the per-level rating widgets and
+agreement about where the respondent id, the per-section answers and
 the sequential step pointer live in session state.
 """
 
 from __future__ import annotations
 
 #: The respondent id entered on the intro page and reused when building
-#: ``responses.csv`` on the ratings page.
+#: ``responses.csv`` on the final "Thank you" page.
 RESPONDENT_KEY = "survey_respondent_id"
 
-#: The B1 ratings :class:`st.Page`, stashed by the router so the intro page's
-#: "Start" button (and B0's "I'm ready") can :func:`st.switch_page` to it.
-QUESTIONNAIRE_PAGE_KEY = "survey_questionnaire_page"
-
-#: Active sequential stage identifier (``background`` / ``ratings`` /
+#: Active sequential stage identifier (``background`` /
 #: ``musthave`` / ``acbc_tournament`` / ``calibration`` / ``wtp``). Changing the
 #: active stage resets :data:`STEP_INDEX_KEY` to ``0`` so the new section starts
 #: at its first step. Read another stage's answers with
@@ -40,19 +36,20 @@ ACBC_TOURNAMENT_PAGE_KEY = "survey_acbc_tournament_page"
 ACBC_SUMMARY_PAGE_KEY = "survey_acbc_summary_page"
 
 #: Linear-flow ``st.Page`` references stashed by the router so each section's
-#: "Next/Finish" can :func:`st.switch_page` to the following section. B1 reuses
-#: :data:`QUESTIONNAIRE_PAGE_KEY`, B4 reuses :data:`ACBC_TOURNAMENT_PAGE_KEY`,
-#: and the final page reuses :data:`ACBC_SUMMARY_PAGE_KEY`.
+#: "Next/Finish" can :func:`st.switch_page` to the following section. B4 reuses
+#: :data:`ACBC_TOURNAMENT_PAGE_KEY`, and the final page reuses
+#: :data:`ACBC_SUMMARY_PAGE_KEY`.
 PART_A_PAGE_KEY = "survey_part_a_page"
 B0_PAGE_KEY = "survey_b0_page"
 B2_PAGE_KEY = "survey_b2_page"
 B5_PAGE_KEY = "survey_b5_page"
 PART_C_PAGE_KEY = "survey_part_c_page"
 
-#: The respondent's ideal :class:`~conjoint.acbc.design.Profile`, derived from
-#: B1 ratings + B2 constraints (:func:`conjoint.acbc.constraints.anchor_from_ratings`).
-#: Consumed by B4 (pool generation) and B5 (calibration concepts). The value
-#: string is unchanged from the legacy BYO key so session continuity holds.
+#: The respondent's ideal :class:`~conjoint.acbc.design.Profile`, derived in B2
+#: from the spec's level order honouring the B2 constraints
+#: (:func:`conjoint.acbc.constraints.anchor_from_ratings`, called with no
+#: ratings). Consumed by B4 (pool generation) and B5 (calibration concepts). The
+#: value string is unchanged from the legacy BYO key so session continuity holds.
 ACBC_ANCHOR_KEY = "acbc_anchor"
 
 #: B2 hard constraints persisted for B4/B5: ``{attribute: required_level}`` and
