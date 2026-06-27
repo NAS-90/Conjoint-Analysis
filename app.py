@@ -27,21 +27,6 @@ from validation.validate_conjoint import NEIGHBOR_K, count_differing
 
 st.set_page_config(page_title="Strategic Product Optimizer", layout="wide")
 
-# --- TOP-LEVEL MODULE SWITCH ---
-# The portfolio/distance analysis is the default. The ACBC quality & diagnostics
-# page is a separate, self-contained view (renders then st.stop()s so the rest of
-# this script does not run for that mode).
-_module = st.sidebar.radio(
-    "Module",
-    ["Portfolio analysis", "ACBC data quality & diagnostics"],
-    help="Switch to the ACBC data quality & model diagnostics page (§8 data cleaning + §9.10 diagnostics).",
-)
-if _module == "ACBC data quality & diagnostics":
-    from dashboard.quality_diagnostics import render_quality_diagnostics
-
-    render_quality_diagnostics()
-    st.stop()
-
 st.title("Product Portfolio Analysis")
 
 # Sidebar for category selection. "Conjoint Demo" carries real conjoint
@@ -453,63 +438,5 @@ if os.path.exists(nn_path):
                     yaxis_title="Count",
                 )
                 st.plotly_chart(fig, use_container_width=True)
-
-                # Share-of-preference transfer (when the conjoint utilities
-                # frame is available for this dataset).
-                utilities_path = paths.get("utilities") if hasattr(paths, "get") else None
-                if utilities_path is None:
-                    utilities_path = os.path.join(base_path, "utilities.csv")
-                if (
-                    isinstance(utilities_path, str)
-                    and os.path.exists(utilities_path)
-                    and paths["importance"].exists()
-                ):
-                    try:
-                        from conjoint.acbc.simulation import (
-                            removal_impact,
-                            utilities_from_frame,
-                        )
-                        from conjoint.io import read_utilities
-                        from conjoint.estimate import grouping_from_columns
-
-                        utilities_frame = read_utilities(utilities_path)
-                        level_map = grouping_from_columns(list(utilities_frame.columns))
-                        # Re-use the preprocessed feature matrix to derive each
-                        # product's spec (attribute → chosen level code).
-                        product_specs = {}
-                        if pre is not None:
-                            for product_id in dm.index:
-                                spec = {}
-                                for attribute, codes in level_map.items():
-                                    best_code, best_value = None, -np.inf
-                                    for code in codes:
-                                        col = f"{attribute}__{code}"
-                                        if col in pre.columns:
-                                            value = float(pre.loc[product_id, col])
-                                            if value > best_value:
-                                                best_value, best_code = value, code
-                                    if best_code is not None:
-                                        spec[attribute] = best_code
-                                product_specs[product_id] = spec
-                        if product_specs:
-                            utilities_by_resp = utilities_from_frame(
-                                utilities_frame, level_map
-                            )
-                            impact = removal_impact(
-                                utilities_by_resp, product_specs, products_to_remove,
-                                model="logit", alpha=1.0,
-                            )
-                            st.markdown("##### Share transfer (logit share-of-preference)")
-                            st.dataframe(
-                                impact.transfer.assign(
-                                    share_before=lambda d: d["share_before"].round(4),
-                                    share_after=lambda d: d["share_after"].round(4),
-                                    delta=lambda d: d["delta"].round(4),
-                                ),
-                                hide_index=True,
-                                use_container_width=True,
-                            )
-                    except Exception as exc:  # never crash the dashboard
-                        st.caption(f"Share transfer unavailable: {exc}")
         else:
             st.error("Distance matrix not available. Cannot run simulation.")
