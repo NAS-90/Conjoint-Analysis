@@ -36,10 +36,18 @@ from conjoint.acbc.responses import (
     read_respondent_csv,
     read_responses_dir,
 )
-from dashboard.exporting import download_csv_button, render_chart
+from dashboard import chart_theme as theme
+from dashboard.exporting import download_workbook_button, render_chart
 from dashboard.results_analysis import SurveyResults, analyze_survey_results
 
 ROOT = Path(__file__).resolve().parent.parent
+
+#: HB sampler settings baked into the client dashboard. The MCMC iteration
+#: count and random seed are technical knobs, so they are not exposed in the
+#: UI: 2000 iterations typically converges (Rhat < 1.1) and the fixed seed
+#: keeps the read-out reproducible. The result is cached per dataset.
+HB_ITERATIONS = 2000
+HB_SEED = 0
 
 
 # ---------------------------------------------------------------------------
@@ -60,15 +68,27 @@ def _spec_path() -> Path:
     return Path(os.environ.get("SURVEY_SPEC") or ROOT / "questionnaire_spec.json")
 
 
-def load_context() -> SurveyContext:
-    """Resolve spec + Part A/C banks + label maps the same way the app does."""
+def load_context(
+    spec_path: Path | str | None = None,
+    workbook: Path | str | None = None,
+) -> SurveyContext:
+    """Resolve spec + Part A/C banks + label maps the same way the app does.
+
+    Called with no arguments it resolves the spec and workbook from the
+    environment, i.e. the product the dashboard was *launched* with. Passing an
+    explicit ``spec_path`` / ``workbook`` builds the context for *that* product
+    instead, so the page can follow the sidebar's product selection rather than
+    being frozen on the launch default. An empty ``workbook`` (``None`` or
+    ``""``) falls back to ``$SURVEY_WORKBOOK`` then the built-in default.
+    """
     from conjoint import questionnaire as q
     from conjoint.acbc import respondent_sim as rs
     from conjoint.acbc.design import attribute_levels_from_spec
     from survey_views import section_source as ss
 
-    spec = q.read_spec(_spec_path())
-    workbook = os.environ.get("SURVEY_WORKBOOK")
+    spec = q.read_spec(spec_path or _spec_path())
+    if not workbook:
+        workbook = os.environ.get("SURVEY_WORKBOOK")
     questions = ss.load_background_questions(workbook)
     features = ss.load_wtp_features(workbook)
     bands = ss.load_amount_bands(workbook)
@@ -116,15 +136,100 @@ def band_label(ctx: SurveyContext, code: str) -> str:
     return dict(ctx.bands).get(code, code)
 
 
+def _question_prompt(ctx: SurveyContext, question_id: str) -> str:
+    """Human-facing prompt for a Part A background question id."""
+    for question in ctx.questions:
+        if question.identifier == question_id:
+            return question.prompt
+    return question_id
+
+
+# ---------------------------------------------------------------------------
+# Unified export: one workbook holding every section's table
+# ---------------------------------------------------------------------------
+def _results_workbook_sheets(
+    results: SurveyResults, ctx: SurveyContext
+) -> "OrderedDict[str, pd.DataFrame]":
+    """Assemble every section's table into ``{sheet_name: DataFrame}``.
+
+    Single source for the "Download all results" workbook: one sheet per
+    analysis output (importance, part-worths, WTP, purchase intent, segments,
+    per-respondent utilities). The interactive market simulator is excluded:
+    its shares depend on the user's live product configuration rather than
+    being a fixed result.
+    """
+    from collections import OrderedDict
+
+    sheets: "OrderedDict[str, pd.DataFrame]" = OrderedDict()
+
+    importance = results.importance.copy()
+    importance.insert(0, "Attribute", importance["attribute"].map(attr_name))
+    sheets["Importance"] = importance
+
+    sheets["Part-worth utilities"] = _partworths_long(results, ctx)[
+        ["Attribute", "Level", "Utility"]
+    ].round(3)
+
+    if results.wtp is not None:
+        sheets["WTP (stated)"] = pd.DataFrame(
+            [
+                {
+                    "Feature": feature_label(ctx, feature_id),
+                    "Modal band": band_label(ctx, fw.modal_band),
+                    "Share willing to pay": fw.share_paid,
+                    "Mean premium (USD)": fw.mean_usd,
+                }
+                for feature_id, fw in results.wtp.features.items()
+            ]
+        )
+
+    derived = results.derived_wtp
+    if derived.available and derived.per_attribute is not None:
+        table = derived.per_attribute.copy()
+        table["Attribute"] = table["attribute"].map(attr_name)
+        table["Level"] = [
+            level_label(ctx, a, lv) for a, lv in zip(table["attribute"], table["level"])
+        ]
+        sheets["WTP (derived)"] = table[["Attribute", "Level", "usd_vs_worst"]].rename(
+            columns={"usd_vs_worst": "Value vs worst level (USD)"}
+        )
+
+    if results.calibration is not None:
+        sheets["Purchase intent"] = pd.DataFrame(
+            {
+                "Purchase intent (0-5)": list(results.calibration.distribution.keys()),
+                "Count": list(results.calibration.distribution.values()),
+            }
+        )
+
+    if results.background is not None and results.background.questions:
+        sheets["Segments"] = pd.DataFrame(
+            [
+                {"Question": _question_prompt(ctx, qid), "Answer": answer, "Count": count}
+                for qid, counts in results.background.questions.items()
+                for answer, count in counts.items()
+            ]
+        )
+
+    sheets["HB utilities"] = results.hb_utilities
+
+    return sheets
+
+
 # ---------------------------------------------------------------------------
 # Streamlit caching wrappers (thin; the core stays pure/testable)
 # ---------------------------------------------------------------------------
-def _cached_results(df: pd.DataFrame, hb_iter: int, seed: int) -> SurveyResults:
+def _cached_results(
+    df: pd.DataFrame, spec_key: str, workbook_key: str, hb_iter: int, seed: int
+) -> SurveyResults:
     import streamlit as st
 
     @st.cache_data(show_spinner="Fitting MNL + Hierarchical Bayes model…")
-    def _run(frame: pd.DataFrame, iters: int, s: int) -> SurveyResults:
-        ctx = load_context()
+    def _run(frame: pd.DataFrame, spec: str, workbook: str, iters: int, s: int) -> SurveyResults:
+        # ``spec``/``workbook`` are part of the cache key, so switching products
+        # re-fits against the correct amount and price bands instead of reusing
+        # the launch product's cached result.
+        ctx = load_context(spec, workbook)
         return analyze_survey_results(
             frame,
             amount_bands=ctx.bands,
@@ -133,7 +238,7 @@ def _cached_results(df: pd.DataFrame, hb_iter: int, seed: int) -> SurveyResults:
             seed=s,
         )
 
-    return _run(df, hb_iter, seed)
+    return _run(df, spec_key, workbook_key, hb_iter, seed)
 
 
 # ---------------------------------------------------------------------------
@@ -150,38 +255,34 @@ def render_results_dashboard() -> None:
         "simulation, purchase likelihood and respondent segments."
     )
     st.caption(
-        "💾 Save any chart as an image with the 📷 button in its top-right toolbar; "
-        "every table below has a CSV download underneath it."
+        "To save a chart as an image, click the camera icon in its top-right toolbar. "
+        "Use the \"Download all results\" button in the sidebar to export every section's table as a single Excel file."
     )
 
-    ctx = load_context()
-    df = _load_responses(st, ctx)
-    if df is None:
+    loaded = _load_responses(st)
+    if loaded is None:
         return
+    df, source_dir = loaded
 
-    download_csv_button(
-        st.sidebar,
-        df,
-        label="⬇️ Download full dataset (CSV)",
-        file_name="acbc_responses.csv",
-        key="dl_full_dataset",
-    )
-
-    hb_iter = int(
-        st.sidebar.select_slider(
-            "HB iterations",
-            options=[200, 400, 1000, 2000, 4000],
-            value=400,
-            help="400 is a preview setting (Rhat may exceed 1.1); use >= 4000 for publication-quality results.",
-        )
-    )
-    seed = int(st.sidebar.number_input("Random seed", value=0, step=1))
+    # Resolve spec/labels/bands for the *selected* product, not the launch
+    # default, so switching the sidebar "Product" dropdown re-labels every
+    # section (attributes, price tiers, simulator) to match the chosen data.
+    spec_key, workbook_key = _resolve_context_paths(source_dir)
+    ctx = load_context(spec_key, workbook_key)
 
     try:
-        results = _cached_results(df, hb_iter, seed)
+        results = _cached_results(df, spec_key, workbook_key, HB_ITERATIONS, HB_SEED)
     except Exception as exc:  # never crash the dashboard over a fit error
         st.error(f"Analysis failed: {exc}")
         return
+
+    download_workbook_button(
+        st.sidebar,
+        _results_workbook_sheets(results, ctx),
+        label="Download all results (Excel)",
+        file_name="conjoint_results.xlsx",
+        key="dl_all_results",
+    )
 
     _render_overview(st, results)
     st.markdown("---")
@@ -226,6 +327,70 @@ def _discover_response_dirs() -> list[tuple[str, str]]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# Product → survey context resolution
+#
+# The sidebar lets the user switch which product's responses to analyse, but
+# the *context* (spec, attribute labels, WTP features, amount/price bands) is
+# product-specific too. Resolving it from the chosen folder — rather than the
+# fixed launch-time env vars — keeps the whole page in sync with the dropdown.
+# ---------------------------------------------------------------------------
+def _product_from_dir(folder: str | None) -> str | None:
+    """``…/survey_responses_<product>`` → ``<product>`` (``None`` if it doesn't match)."""
+    if not folder:
+        return None
+    name = Path(folder).name
+    if not name.startswith(RESPONSES_DIR_PREFIX):
+        return None  # free-form path / upload → keep the launch-time context
+    return name[len(RESPONSES_DIR_PREFIX):] or None
+
+
+def _spec_for_product(product: str | None) -> Path:
+    """Per-product ``questionnaire_spec_<product>.json`` if present, else the env/default spec."""
+    if product:
+        candidate = ROOT / f"questionnaire_spec_{product}.json"
+        if candidate.exists():
+            return candidate
+    return _spec_path()
+
+
+def _workbook_for_product(product: str | None) -> Path | None:
+    """Per-product Part A/C ``Survey_questions`` workbook for ``product``.
+
+    Naming isn't uniform across products (``computer_survey_questions.xlsx`` for
+    *computers*, the bare ``survey_questions.xlsx`` default for *smartphones*),
+    so several conventional spellings are tried before the shared default. The
+    env workbook is deliberately *not* used as a fallback here: it belongs to
+    the launch product and must not leak across a product switch. With no
+    product (uploads / free-form path) we defer to ``load_context``'s env logic.
+    """
+    if not product:
+        return None
+    singular = product[:-1] if product.endswith("s") else product
+    candidates = (
+        ROOT / f"{product}_survey_questions.xlsx",
+        ROOT / f"{singular}_survey_questions.xlsx",
+        ROOT / f"{product}.xlsx",
+        ROOT / "survey_questions.xlsx",
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _resolve_context_paths(folder: str | None) -> tuple[str, str]:
+    """``(spec_key, workbook_key)`` for the product behind ``folder``.
+
+    Returned as strings so they double as stable :func:`st.cache_data` keys; an
+    empty ``workbook_key`` means "fall back to the env/default workbook".
+    """
+    product = _product_from_dir(folder)
+    spec_path = _spec_for_product(product)
+    workbook = _workbook_for_product(product)
+    return str(spec_path), ("" if workbook is None else str(workbook))
+
+
 def _pick_responses_dir(st) -> str:
     """Product dropdown over discovered folders (+ an 'Other folder…' text escape)."""
     discovered = _discover_response_dirs()
@@ -243,29 +408,32 @@ def _pick_responses_dir(st) -> str:
         "Product",
         options=choices,
         index=choices.index(default_label),
-        help="Pick which collected survey to analyse — one folder per product.",
+        help="Pick which collected survey to analyse: one folder per product.",
     )
     if picked == other:
         return st.sidebar.text_input("Responses folder", value=default_path)
     return paths[picked]
 
 
-def _load_responses(st, ctx: SurveyContext) -> pd.DataFrame | None:
-    """Data-source picker → validated long-format frame (or ``None``).
+def _load_responses(st) -> tuple[pd.DataFrame, str | None] | None:
+    """Data-source picker → ``(frame, source_dir)`` (or ``None``).
 
     Reads the per-respondent ``responses_<id>.csv`` questionnaires the survey
     app produces — either a whole local folder of them or an ad-hoc upload of
-    one or more. One file is one completed questionnaire.
+    one or more. One file is one completed questionnaire. ``source_dir`` is the
+    selected local folder (used to resolve the product's context) or ``None``
+    for uploads, where the launch-time context is kept.
     """
     source = st.sidebar.radio(
         "Data source",
         ["Local responses folder", "Upload questionnaires"],
         help=(
             "Reads the per-respondent responses_<id>.csv files the survey app "
-            "collects — a local folder of them, or an upload of one or more."
+            "collects: a local folder of them, or an upload of one or more."
         ),
     )
     df: pd.DataFrame | None = None
+    source_dir: str | None = None
     if source == "Local responses folder":
         folder = _pick_responses_dir(st)
         if not folder:
@@ -276,6 +444,7 @@ def _load_responses(st, ctx: SurveyContext) -> pd.DataFrame | None:
         except Exception as exc:
             st.error(f"Could not read questionnaires: {exc}")
             return None
+        source_dir = folder
         st.sidebar.caption(f"Loaded {len(files)} questionnaire(s) from `{folder}`.")
     else:  # Upload questionnaires
         uploaded = st.sidebar.file_uploader(
@@ -294,9 +463,9 @@ def _load_responses(st, ctx: SurveyContext) -> pd.DataFrame | None:
         st.sidebar.caption(f"Loaded {len(uploaded)} uploaded questionnaire(s).")
 
     if STAGE_COL not in df.columns or not (df[STAGE_COL] == STAGE_TOURNAMENT).any():
-        st.error("These questionnaires have no tournament (B4) rows, so ACBC estimation is not possible.")
+        st.error("These questionnaires contain no choice tasks, so the results cannot be computed.")
         return None
-    return df
+    return df, source_dir
 
 
 # ---------------------------------------------------------------------------
@@ -311,15 +480,14 @@ def _render_overview(st, results: SurveyResults) -> None:
     col3.metric(
         "HB convergence (Rhat max)",
         f"{results.rhat_max:.2f}",
-        help="Gelman-Rubin < 1.1 indicates convergence. It runs high with few preview iterations; just raise the iteration count.",
+        help="Gelman-Rubin diagnostic; values below 1.1 indicate the Hierarchical Bayes model has converged.",
     )
-    col3.caption("Converged" if converged else "Preview run (consider raising HB iterations)")
-    download_csv_button(
-        st,
-        results.hb_utilities,
-        label="⬇️ Download per-respondent utilities (CSV)",
-        file_name="hb_utilities.csv",
-        key="dl_hb_utilities",
+    fg, bg = ("#16A34A", "#DCFCE7") if converged else ("#B45309", "#FEF3C7")
+    label = "✓ Converged" if converged else "≈ Approximate (Rhat ≥ 1.1)"
+    col3.markdown(
+        f"<span style='background:{bg};color:{fg};padding:3px 12px;border-radius:999px;"
+        f"font-size:0.8rem;font-weight:600;white-space:nowrap;'>{label}</span>",
+        unsafe_allow_html=True,
     )
 
 
@@ -338,20 +506,15 @@ def _render_importance(st, results: SurveyResults, ctx: SurveyContext) -> None:
         x="relative_importance",
         y="Attribute",
         orientation="h",
+        color="relative_importance",
+        color_continuous_scale=list(theme.SEQUENTIAL_INDIGO),
         text=imp["relative_importance"].map(lambda v: f"{v:.1%}"),
         title="Relative importance (Range_A / ΣRange)",
     )
     fig.update_layout(xaxis_tickformat=".0%", xaxis_title="", yaxis_title="")
+    fig.update_coloraxes(showscale=False)  # the bar length already encodes magnitude
+    theme.style_fig(fig)
     render_chart(st, fig, filename="attribute_importance")
-    importance_csv = results.importance.copy()
-    importance_csv.insert(0, "Attribute", importance_csv["attribute"].map(attr_name))
-    download_csv_button(
-        st,
-        importance_csv,
-        label="⬇️ Download importance (CSV)",
-        file_name="attribute_importance.csv",
-        key="dl_importance",
-    )
     top = imp.sort_values("relative_importance", ascending=False).iloc[0]
     st.caption(
         f"The most important attribute is **{top['Attribute']}** "
@@ -398,23 +561,21 @@ def _render_partworths(st, results: SurveyResults, ctx: SurveyContext) -> None:
         x="Utility",
         y="Level",
         orientation="h",
+        color="Utility",
+        color_continuous_scale=list(theme.DIVERGING),
+        color_continuous_midpoint=0,
         text=block["Utility"].map(lambda v: f"{v:+.0f}"),
-        title=f"{attr_name(chosen)} — utility by level",
+        title=f"{attr_name(chosen)}: utility by level",
     )
     fig.update_layout(xaxis_title="", yaxis_title="")
+    fig.update_coloraxes(showscale=False)  # coral = below-average level, teal = above
+    theme.style_fig(fig)
     render_chart(st, fig, filename=f"partworths_{chosen}")
     with st.expander("Show part-worth utilities for all attributes"):
         st.dataframe(
             tidy[["Attribute", "Level", "Utility"]].round(1),
             hide_index=True,
             use_container_width=True,
-        )
-        download_csv_button(
-            st,
-            tidy[["Attribute", "Level", "Utility"]].round(3),
-            label="⬇️ Download part-worth utilities (CSV)",
-            file_name="partworth_utilities.csv",
-            key="dl_partworths",
         )
 
 
@@ -428,9 +589,9 @@ def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
     left, right = st.columns(2)
 
     with left:
-        st.markdown("**Stated WTP (Part C)** — how much extra respondents will pay for an upgrade")
+        st.markdown("**Stated WTP**: how much extra respondents will pay for an upgrade")
         if results.wtp is None:
-            st.info("This dataset has no Part C (WTP) records.")
+            st.info("This dataset has no willingness-to-pay records.")
         else:
             rows = []
             for feature_id, fw in results.wtp.features.items():
@@ -439,18 +600,10 @@ def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
                         "Feature": feature_label(ctx, feature_id),
                         "Modal band": band_label(ctx, fw.modal_band),
                         "Share willing to pay": f"{fw.share_paid:.0%}",
-                        "Mean premium ($)": (f"${fw.mean_usd:,.0f}" if fw.mean_usd is not None else "—"),
+                        "Mean premium ($)": (f"${fw.mean_usd:,.0f}" if fw.mean_usd is not None else "-"),
                     }
                 )
-            stated_df = pd.DataFrame(rows)
-            st.dataframe(stated_df, hide_index=True, use_container_width=True)
-            download_csv_button(
-                st,
-                stated_df,
-                label="⬇️ Download stated WTP (CSV)",
-                file_name="wtp_stated.csv",
-                key="dl_wtp_stated",
-            )
+            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
             feature_ids = list(results.wtp.features.keys())
             picked = st.selectbox(
                 "View band distribution for a feature",
@@ -466,12 +619,21 @@ def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
                     "Count": list(fw.band_counts.values()),
                 }
             )
-            fig = px.bar(dist, x="Band", y="Count", title=feature_label(ctx, picked))
+            fig = px.bar(
+                dist,
+                x="Band",
+                y="Count",
+                color="Count",
+                color_continuous_scale=list(theme.SEQUENTIAL_INDIGO),
+                title=feature_label(ctx, picked),
+            )
             fig.update_layout(xaxis_title="", yaxis_title="")
+            fig.update_coloraxes(showscale=False)
+            theme.style_fig(fig)
             render_chart(st, fig, filename=f"wtp_bands_{picked}")
 
     with right:
-        st.markdown("**Derived WTP** — dollar value converted from the price part-worth utilities")
+        st.markdown("**Derived WTP**: dollar value converted from the price part-worth utilities")
         derived = results.derived_wtp
         if not derived.available:
             st.info(f"Monetary WTP cannot be derived: {derived.note}.")
@@ -487,13 +649,6 @@ def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
                 table[["Attribute", "Level", "Value vs. worst level ($)"]],
                 hide_index=True,
                 use_container_width=True,
-            )
-            download_csv_button(
-                st,
-                table[["Attribute", "Level", "Value vs. worst level ($)"]],
-                label="⬇️ Download derived WTP (CSV)",
-                file_name="wtp_derived.csv",
-                key="dl_wtp_derived",
             )
 
 
@@ -544,18 +699,16 @@ def _render_simulator(st, results: SurveyResults, ctx: SurveyContext) -> None:
         share_df,
         x="Product",
         y="Share",
+        color="Product",
+        color_discrete_sequence=list(theme.PALETTE),
         text=share_df["Share"].map(lambda v: f"{v:.1%}"),
         title="Share of preference",
     )
-    fig.update_layout(yaxis_tickformat=".0%", xaxis_title="", yaxis_title="")
-    render_chart(st, fig, filename="share_of_preference")
-    download_csv_button(
-        st,
-        share_df,
-        label="⬇️ Download share of preference (CSV)",
-        file_name="share_of_preference.csv",
-        key="dl_sim_shares",
+    fig.update_layout(
+        yaxis_tickformat=".0%", xaxis_title="", yaxis_title="", showlegend=False
     )
+    theme.style_fig(fig)
+    render_chart(st, fig, filename="share_of_preference")
 
     to_remove = st.multiselect(
         "Remove product(s) to see share transfer",
@@ -575,13 +728,6 @@ def _render_simulator(st, results: SurveyResults, ctx: SurveyContext) -> None:
         for column in ("Share before", "Share after", "Change"):
             transfer[column] = transfer[column].map(lambda v: f"{v:.1%}")
         st.dataframe(transfer, hide_index=True, use_container_width=True)
-        download_csv_button(
-            st,
-            transfer,
-            label="⬇️ Download share transfer (CSV)",
-            file_name="share_transfer.csv",
-            key="dl_sim_transfer",
-        )
         st.caption("A positive \"Change\" means the product absorbed share from the removed product(s).")
 
 
@@ -591,26 +737,28 @@ def _render_simulator(st, results: SurveyResults, ctx: SurveyContext) -> None:
 def _render_calibration(st, results: SurveyResults) -> None:
     import plotly.express as px
 
-    st.subheader("Purchase likelihood (B5)")
+    st.subheader("Purchase likelihood")
     cal = results.calibration
     if cal is None:
-        st.info("This dataset has no B5 calibration records.")
+        st.info("This dataset has no purchase-likelihood records.")
         return
     col1, col2 = st.columns([1, 2])
-    col1.metric("Mean purchase likelihood", f"{cal.mean_probability_pct:.0f}%", help="B5 rating 0-5, converted to a percentage.")
+    col1.metric("Mean purchase likelihood", f"{cal.mean_probability_pct:.0f}%", help="Purchase-intent rating from 0 to 5, converted to a percentage.")
     dist = pd.DataFrame(
         {"Purchase intent (0-5)": list(cal.distribution.keys()), "Count": list(cal.distribution.values())}
     )
-    fig = px.bar(dist, x="Purchase intent (0-5)", y="Count", title="Purchase intent distribution (0 = never buy, 5 = definitely buy)")
-    fig.update_layout(xaxis_title="", yaxis_title="")
-    render_chart(col2, fig, filename="purchase_intent")
-    download_csv_button(
-        col2,
+    fig = px.bar(
         dist,
-        label="⬇️ Download purchase-intent distribution (CSV)",
-        file_name="purchase_intent_distribution.csv",
-        key="dl_calibration",
+        x="Purchase intent (0-5)",
+        y="Count",
+        color="Purchase intent (0-5)",
+        color_continuous_scale=list(theme.SEQUENTIAL_INDIGO),
+        title="Purchase intent distribution (0 = never buy, 5 = definitely buy)",
     )
+    fig.update_layout(xaxis_title="", yaxis_title="")
+    fig.update_coloraxes(showscale=False)  # pale indigo = low intent, deep = high
+    theme.style_fig(fig)
+    render_chart(col2, fig, filename="purchase_intent")
 
 
 # ---------------------------------------------------------------------------
@@ -619,24 +767,18 @@ def _render_calibration(st, results: SurveyResults) -> None:
 def _render_segments(st, results: SurveyResults, ctx: SurveyContext) -> None:
     import plotly.express as px
 
-    st.subheader("Respondent segments (Part A)")
+    st.subheader("Respondent segments")
     background = results.background
     if background is None or not background.questions:
-        st.info("This dataset has no Part A (background) records.")
+        st.info("This dataset has no respondent background records.")
         return
-
-    def _prompt(question_id: str) -> str:
-        for question in ctx.questions:
-            if question.identifier == question_id:
-                return question.prompt
-        return question_id
 
     question_ids = list(background.questions.keys())
     picked = st.selectbox(
         "Select background question",
         options=question_ids,
         index=0,
-        format_func=_prompt,
+        format_func=lambda qid: _question_prompt(ctx, qid),
         key="segment_question",
     )
     counts = background.questions[picked]
@@ -648,17 +790,13 @@ def _render_segments(st, results: SurveyResults, ctx: SurveyContext) -> None:
         x="Count",
         y="Answer",
         orientation="h",
-        title=_prompt(picked),
+        color="Answer",
+        color_discrete_sequence=list(theme.PALETTE),
+        title=_question_prompt(ctx, picked),
     )
-    fig.update_layout(xaxis_title="", yaxis_title="")
+    fig.update_layout(xaxis_title="", yaxis_title="", showlegend=False)
+    theme.style_fig(fig)
     render_chart(st, fig, filename="respondent_segment")
-    download_csv_button(
-        st,
-        dist,
-        label="⬇️ Download answer distribution (CSV)",
-        file_name="segment_distribution.csv",
-        key="dl_segment",
-    )
 
 
 if __name__ == "__main__":  # pragma: no cover — manual ``streamlit run``

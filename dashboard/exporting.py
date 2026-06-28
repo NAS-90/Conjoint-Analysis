@@ -18,7 +18,9 @@ existing ``_render_*`` convention.
 
 from __future__ import annotations
 
+import io
 import re
+from collections.abc import Mapping
 from typing import Any
 
 import pandas as pd
@@ -28,6 +30,12 @@ DEFAULT_IMAGE_SCALE = 3
 
 #: Modebar buttons that add noise without helping a business reader.
 _REMOVED_MODEBAR_BUTTONS = ("lasso2d", "select2d")
+
+#: MIME type for a modern ``.xlsx`` workbook.
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+#: Characters Excel forbids in a worksheet name.
+_INVALID_SHEET_CHARS = re.compile(r"[\[\]:*?/\\]")
 
 
 def _safe_filename(name: str) -> str:
@@ -98,5 +106,72 @@ def download_csv_button(
         data=df.to_csv(index=False).encode("utf-8"),
         file_name=file_name,
         mime="text/csv",
+        key=key,
+    )
+
+
+def _safe_sheet_name(name: str) -> str:
+    """Coerce ``name`` into a valid Excel worksheet title (≤ 31 chars)."""
+    cleaned = _INVALID_SHEET_CHARS.sub(" ", str(name)).strip()
+    return (cleaned or "Sheet")[:31]
+
+
+def _unique_sheet_name(name: str, used: set[str]) -> str:
+    """Disambiguate ``name`` against already-used titles, staying ≤ 31 chars."""
+    if name not in used:
+        return name
+    for suffix in range(2, 100):
+        tag = f" ({suffix})"
+        candidate = f"{name[: 31 - len(tag)]}{tag}"
+        if candidate not in used:
+            return candidate
+    return name[:31]
+
+
+def workbook_bytes(sheets: Mapping[str, pd.DataFrame]) -> bytes:
+    """Serialise ``{sheet_name: DataFrame}`` into one in-memory ``.xlsx``.
+
+    One worksheet per entry, in iteration order. Sheet titles are sanitised
+    for Excel's constraints (≤ 31 chars, no ``[]:*?/\\``) and de-duplicated.
+    """
+    if not sheets:
+        raise ValueError("workbook_bytes needs at least one sheet")
+    buffer = io.BytesIO()
+    used: set[str] = set()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        for name, frame in sheets.items():
+            if not isinstance(frame, pd.DataFrame):
+                raise TypeError(f"sheet {name!r} must be a DataFrame, got {type(frame)!r}")
+            title = _unique_sheet_name(_safe_sheet_name(name), used)
+            used.add(title)
+            frame.to_excel(writer, sheet_name=title, index=False)
+    return buffer.getvalue()
+
+
+def download_workbook_button(
+    st: Any,
+    sheets: Mapping[str, pd.DataFrame],
+    *,
+    label: str,
+    file_name: str,
+    key: str | None = None,
+) -> None:
+    """Offer several DataFrames as one downloadable multi-sheet ``.xlsx``.
+
+    Empty frames are dropped; if nothing remains, no button is rendered.
+    ``file_name`` should include the ``.xlsx`` suffix.
+    """
+    present = {
+        name: frame
+        for name, frame in sheets.items()
+        if isinstance(frame, pd.DataFrame) and not frame.empty
+    }
+    if not present:
+        return
+    st.download_button(
+        label,
+        data=workbook_bytes(present),
+        file_name=file_name,
+        mime=_XLSX_MIME,
         key=key,
     )

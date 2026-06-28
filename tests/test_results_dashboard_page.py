@@ -171,6 +171,31 @@ def test_all_sections_render(results, ctx) -> None:
 
 
 @pytest.mark.integration
+def test_results_workbook_bundles_every_section(results, ctx) -> None:
+    import io
+
+    import pandas as pd
+
+    from dashboard.exporting import workbook_bytes
+
+    sheets = rd._results_workbook_sheets(results, ctx)
+    # core outputs are always present; synthetic data also has WTP/B5/Part A
+    for expected in (
+        "Importance",
+        "Part-worth utilities",
+        "WTP (stated)",
+        "Purchase intent",
+        "Segments",
+        "HB utilities",
+    ):
+        assert expected in sheets, f"missing {expected!r} sheet"
+
+    # the whole bundle serialises to one readable workbook
+    back = pd.read_excel(io.BytesIO(workbook_bytes(sheets)), sheet_name=None, engine="openpyxl")
+    assert set(back) == set(sheets)
+
+
+@pytest.mark.integration
 def test_simulator_default_products_are_differentiated(ctx) -> None:
     first = rd._default_product_spec(ctx, 0)
     second = rd._default_product_spec(ctx, 1)
@@ -203,3 +228,67 @@ def test_pick_responses_dir_falls_back_to_text_input(monkeypatch) -> None:
     monkeypatch.setattr(rd, "_default_responses_dir", lambda: "outputs/survey_responses_x")
     # No folders discovered → plain text input pre-filled with the default path.
     assert rd._pick_responses_dir(FakeSt()) == "outputs/survey_responses_x"
+
+
+# ---------------------------------------------------------------------------
+# Product → context resolution: selecting a product folder must switch the
+# spec/labels/bands, not just the responses. (Regression: the dropdown used to
+# change the data while the page stayed frozen on the launch product's spec.)
+# ---------------------------------------------------------------------------
+@pytest.mark.unit
+def test_product_from_dir() -> None:
+    assert rd._product_from_dir("outputs/survey_responses_computers") == "computers"
+    assert rd._product_from_dir("outputs/survey_responses_smartphones") == "smartphones"
+    # free-form path / upload → no product token (keep launch-time context)
+    assert rd._product_from_dir("some/other/folder") is None
+    assert rd._product_from_dir(None) is None
+    assert rd._product_from_dir("") is None
+
+
+@pytest.mark.unit
+def test_spec_for_product_resolves_per_product() -> None:
+    assert rd._spec_for_product("computers").name == "questionnaire_spec_computers.json"
+    assert rd._spec_for_product("smartphones").name == "questionnaire_spec_smartphones.json"
+    # unknown product → env/default spec rather than a missing file
+    assert rd._spec_for_product("teleporter") == rd._spec_path()
+    assert rd._spec_for_product(None) == rd._spec_path()
+
+
+@pytest.mark.unit
+def test_workbook_for_product_resolves_per_product() -> None:
+    # singular spelling on disk for computers; bare default for smartphones
+    assert rd._workbook_for_product("computers").name == "computer_survey_questions.xlsx"
+    assert rd._workbook_for_product("smartphones").name == "survey_questions.xlsx"
+    # no product (uploads) → defer to load_context's env/default logic
+    assert rd._workbook_for_product(None) is None
+
+
+@pytest.mark.unit
+def test_resolve_context_paths_follows_folder() -> None:
+    spec_key, workbook_key = rd._resolve_context_paths("outputs/survey_responses_computers")
+    assert spec_key.endswith("questionnaire_spec_computers.json")
+    assert workbook_key.endswith("computer_survey_questions.xlsx")
+
+    spec_key, workbook_key = rd._resolve_context_paths("outputs/survey_responses_smartphones")
+    assert spec_key.endswith("questionnaire_spec_smartphones.json")
+    assert workbook_key.endswith("survey_questions.xlsx")
+
+
+@pytest.mark.integration
+def test_context_follows_selected_product() -> None:
+    """The whole point of the fix: context attributes/labels switch with the product."""
+    phones = rd.load_context(
+        rd._spec_for_product("smartphones"), rd._workbook_for_product("smartphones")
+    )
+    computers = rd.load_context(
+        rd._spec_for_product("computers"), rd._workbook_for_product("computers")
+    )
+
+    # Each product exposes its own attributes in the simulator/labels.
+    assert {"camera", "card"} <= set(phones.attribute_levels)
+    assert {"graphics", "touchscreen"} <= set(computers.attribute_levels)
+    assert "touchscreen" not in phones.attribute_levels
+    assert "camera" not in computers.attribute_levels
+
+    # Price tier labels are product-specific (phones < $300 vs computers < $600).
+    assert phones.labels["price"]["budget"] != computers.labels["price"]["budget"]
