@@ -8,6 +8,7 @@
 #   ./run.sh conjoint       # build the conjoint demo + customer-weighted distances
 #   ./run.sh app            # only launch the analysis dashboard (assumes venv + outputs/)
 #   ./run.sh survey         # launch the standalone conjoint questionnaire app
+#   ./run.sh survey_setup   # launch the standalone survey setup app
 #
 # Tested on macOS and Linux. On Windows, use WSL or run the equivalent
 # commands manually from PowerShell.
@@ -205,12 +206,20 @@ survey() {
     python -m streamlit run survey.py
 }
 
+survey_setup() {
+    # shellcheck disable=SC1091
+    source "$VENV/bin/activate"
+    step "Launching standalone survey setup app"
+    python -m streamlit run survey_setup_bundle/survey_setup.py
+}
+
 case "${1:-all}" in
     setup)      setup ;;
     preprocess) preprocess ;;
     conjoint)   conjoint ;;
     app)        app ;;
     survey)     survey ;;
+    survey_setup) survey_setup ;;
     all)        setup; preprocess; conjoint; app ;;
-    *)          echo "Usage: $0 [setup|preprocess|conjoint|app|survey|all]"; exit 2 ;;
+    *)          echo "Usage: $0 [setup|preprocess|conjoint|app|survey|survey_setup|all]"; exit 2 ;;
 esac
