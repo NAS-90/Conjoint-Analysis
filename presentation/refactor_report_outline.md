@@ -1,134 +1,134 @@
-# 汇报大纲 · 从 Distance Analysis 走向 Conjoint Analysis
+# Presentation outline · From Distance Analysis to Conjoint Analysis
 
-> 这份大纲是给 `refactor_report.html` 幻灯片用的。  
-> 我重新读了 `../Docs/Expose_v3.md` 后，把主线改成下面这个逻辑：
+> This outline is for the `refactor_report.html` slides.  
+> After re-reading `../Docs/Expose_v3.md`, I reworked the main storyline into the following logic:
 >
-> **现在的工具是 Distance Analysis。**  
-> 它根据产品技术参数计算产品之间有多相似。
+> **The current tool is Distance Analysis.**  
+> It computes how similar products are to each other based on their technical specifications.
 >
-> **项目最终目标不是只做普通 distance analysis，而是加入 Conjoint Analysis。**  
-> 也就是：先用问卷收集客户偏好，再把客户对不同属性的重视程度变成权重，最后让 distance matrix 反映“客户眼中的相似度”。
+> **The project's final goal is not just plain distance analysis, but adding Conjoint Analysis.**  
+> In other words: first collect customer preferences through a survey, then turn how much customers value each attribute into weights, and finally make the distance matrix reflect "similarity as customers see it."
 >
-> 所以这次 P1 汇报要讲清楚：  
-> 我现在做的不是最终 conjoint 模块，而是在把现有 distance analysis 工具改造成后续 conjoint 模块可以接上的基础。
+> So this P1 presentation needs to make clear:  
+> what I am building now is not the final conjoint module, but a foundation that turns the existing distance analysis tool into something the later conjoint modules can plug into.
 
 ---
 
-## 第一部分：先讲清楚项目方向（第 1–3 页）
+## Part 1: First, clarify the project direction (pages 1-3)
 
-### 1. 封面 — *From Distance Analysis to Conjoint Analysis*
+### 1. Cover: *From Distance Analysis to Conjoint Analysis*
 
-**这一页要表达：**  
-这次汇报不是单纯讲代码重构，而是讲第一阶段如何为最终的 conjoint analysis 工具打基础。
+**What this slide should convey:**  
+This presentation is not just about code refactoring, but about how the first phase lays the foundation for the final conjoint analysis tool.
 
-**可以怎么讲：**  
-现在我们手里的工具叫 Distance Analysis。它能根据产品参数算出哪些产品相似、哪些产品差异大。  
-但 Exposé 里的最终目标更进一步：把客户偏好加入进来，让工具不仅看技术参数，也能看客户真正关心什么。
+**How to present it:**  
+The tool we have today is called Distance Analysis. It can compute, from product specifications, which products are similar and which are very different.  
+But the final goal in the Exposé goes one step further: bring customer preferences into the picture, so the tool looks not only at technical specifications but also at what customers truly care about.
 
-**听众该记住：**  
-当前阶段是从 distance analysis 走向 conjoint analysis 的第一步。
+**Key takeaway:**  
+The current phase is the first step from distance analysis toward conjoint analysis.
 
 ---
 
-### 2. 当前工具和最终目标 — *Technical distance today, customer-weighted distance next*
+### 2. The current tool and the final goal: *Technical distance today, customer-weighted distance next*
 
-**这一页要表达：**  
-当前工具和最终目标之间的差别。
+**What this slide should convey:**  
+The difference between the current tool and the final goal.
 
-**可以怎么讲：**  
-现在的 distance analysis 主要回答这个问题：
+**How to present it:**  
+Today's distance analysis mainly answers this question:
 
-> 从产品参数来看，哪些产品彼此相似？
+> Based on product specifications, which products are similar to each other?
 
-但最终的 conjoint-based tool 要回答的是：
+But the final conjoint-based tool needs to answer:
 
-> 从客户偏好来看，哪些产品真的彼此相似？
+> Based on customer preferences, which products are really similar to each other?
 
-这两个答案可能不一样。  
-两个产品在技术参数上很接近，但如果客户最在意的属性不同，它们在客户眼里可能并不相似。
+These two answers may differ.  
+Two products can be very close in technical specifications, but if the attributes customers care about most are different, they may not be similar in customers' eyes.
 
-**屏幕上建议放：**
+**Suggested on-screen content:**
 
-| 当前版本 | 目标版本 |
+| Current version | Target version |
 |---|---|
 | Technical Distance Analysis | Conjoint-weighted Distance Analysis |
-| 所有属性默认差不多重要 | 属性重要性来自客户问卷 |
-| 看工程参数 | 看客户偏好 + 工程参数 |
-| 输出普通 distance matrix | 输出 technical vs customer-weighted 对比 |
+| All attributes treated as roughly equally important | Attribute importance comes from a customer survey |
+| Looks at engineering specifications | Looks at customer preferences + engineering specifications |
+| Outputs a plain distance matrix | Outputs a technical vs customer-weighted comparison |
 
-**和 Exposé 的关系：**  
-对应 Exposé 第 1–3 节：现有工具能算技术距离，但缺少客户视角。
-
----
-
-### 3. 为什么需要 Conjoint — *Not every feature matters equally*
-
-**这一页要表达：**  
-Exposé 里指出的核心问题：现在的 distance analysis 默认每个属性一样重要。
-
-**可以怎么讲：**  
-目前的距离计算会把所有特征标准化，然后基本按同等重要性参与计算。  
-这在技术上可以跑通，但它不一定符合客户真实决策。
-
-举例来说：  
-如果客户非常在意 transmission，但不太在意 tank size，那么这两个属性在距离计算里就不应该有一样的影响力。
-
-**重点句：**  
-Conjoint analysis 的作用，就是把“客户觉得什么重要”转换成数字权重。
-
-**简单例子：**  
-现在的 technical distance 可能会把 `transmission_type`、`tank_capacity`、`wheelbase` 都当成参与距离计算的普通属性。  
-但如果问卷结果显示客户最在意的是 `transmission_type`，不太在意 `wheelbase`，那么后面的 conjoint-weighted distance 就会让 transmission 的差异影响更大，wheelbase 的差异影响更小。
-
-**听众该记住：**  
-Conjoint 不是另一个独立展示功能，而是后面要反过来改变 distance calculation 的核心输入。
+**Relation to the Exposé:**  
+Corresponds to Sections 1-3 of the Exposé: the existing tool can compute technical distance, but lacks the customer perspective.
 
 ---
 
-## 第二部分：P1 为什么先修基础（第 4–6 页）
+### 3. Why we need Conjoint: *Not every feature matters equally*
 
-### 4. 后续模块需要一个稳定的数据入口 — *Conjoint needs clean metadata*
+**What this slide should convey:**  
+The core problem pointed out in the Exposé: today's distance analysis assumes every attribute is equally important.
 
-**这一页要表达：**  
-要自动生成问卷、计算 conjoint、再加权距离，前提是数据结构必须统一。
+**How to present it:**  
+The current distance computation standardizes all features, then includes them with essentially equal importance.  
+This works technically, but it does not necessarily match how customers actually decide.
 
-**可以怎么讲：**  
-Exposé 把后续工作拆成五个模块：
+For example:  
+if a customer cares a lot about transmission but not much about tank size, then these two attributes should not have the same influence in the distance computation.
 
-1. Universal Preprocessor；
-2. Questionnaire Generator；
-3. Conjoint Computation；
-4. Weighted Distance；
-5. Comparative Dashboard。
+**Key sentence:**  
+The role of conjoint analysis is to turn "what customers consider important" into numerical weights.
 
-这些模块不是各做各的。  
-Module 2 要读产品属性生成问卷，Module 3 要知道每个属性有哪些 level，Module 4 要把 conjoint 权重映射回 distance matrix。  
-所以最前面的数据 schema 如果不稳定，后面所有 conjoint 模块都会接不上。
+**Example:**  
+Today's technical distance might treat `transmission_type`, `tank_capacity`, and `wheelbase` all as ordinary attributes contributing to the distance computation.  
+But if the survey results show that customers care most about `transmission_type` and not much about `wheelbase`, then the later conjoint-weighted distance will let differences in transmission count for more and differences in wheelbase count for less.
 
-**听众该记住：**  
-P1 的重构不是为了“代码好看”，而是为了让后面的 conjoint pipeline 有统一入口。
+**Key takeaway:**  
+Conjoint is not another standalone display feature, but the core input that will, in turn, change the distance calculation later.
 
 ---
 
-### 5. 原问题一：数据清洗逻辑不统一 — *The same preprocessing was repeated*
+## Part 2: Why P1 fixes the foundation first (pages 4-6)
 
-**这一页要表达：**  
-旧工具虽然能跑 distance analysis，但不是一个适合扩展到 conjoint 的架构。
+### 4. The later modules need a stable data entry point: *Conjoint needs clean metadata*
 
-**可以怎么讲：**  
-原来不同数据集有不同的预处理脚本。  
-它们都在做类似的事情：清洗表格、转换数据、准备 distance matrix。  
-这对一个 demo 来说可以，但对后续五个模块来说风险很大。
+**What this slide should convey:**  
+To automatically generate the survey, compute conjoint, and then weight the distance, the prerequisite is that the data structure must be unified.
 
-**为什么影响 conjoint：**  
-如果拖拉机、手机、用户上传数据各自用不同规则清洗，那么后面自动生成问卷和计算权重时，就很难保证它们读到的是同一种数据结构。
+**How to present it:**  
+The Exposé breaks the later work into five modules:
 
-**用一个 distance analysis 小例子来理解：**
+1. Universal Preprocessor;
+2. Questionnaire Generator;
+3. Conjoint Computation;
+4. Weighted Distance;
+5. Comparative Dashboard.
 
-Distance analysis 不能直接拿原始 Excel 来算。  
-它最后需要的是一张“全是数字”的产品表，因为距离计算本质上是在比较两行数字有多接近。
+These modules do not each work on their own.  
+Module 2 reads product attributes to generate the survey, Module 3 needs to know which levels each attribute has, and Module 4 maps the conjoint weights back onto the distance matrix.  
+So if the data schema at the very front is not stable, all the later conjoint modules will fail to connect.
 
-以 tractor 数据为例，原始 `Edited` 表里可能长这样：
+**Key takeaway:**  
+The P1 refactor is not about "making the code look nice," but about giving the later conjoint pipeline a unified entry point.
+
+---
+
+### 5. Problem one: data-cleaning logic was inconsistent: *The same preprocessing was repeated*
+
+**What this slide should convey:**  
+The old tool could run distance analysis, but it was not an architecture suited for extending to conjoint.
+
+**How to present it:**  
+Originally, different datasets had different preprocessing scripts.  
+They all did similar things: clean the table, transform the data, prepare the distance matrix.  
+This is fine for a demo, but very risky for the five modules that follow.
+
+**Why it affects conjoint:**  
+If tractor, smartphone, and user-upload data are each cleaned with different rules, then when later automatically generating the survey and computing weights, it is hard to guarantee they read the same data structure.
+
+**To understand it through a small distance analysis example:**
+
+Distance analysis cannot compute directly on raw Excel.  
+What it ultimately needs is an "all-numeric" product table, because the distance computation is essentially comparing how close two rows of numbers are.
+
+Take the tractor data as an example. The raw `Edited` sheet might look like this:
 
 | product | hp_range | transmission_type | tank_capacity |
 |---|---:|---|---:|
@@ -136,8 +136,8 @@ Distance analysis 不能直接拿原始 Excel 来算。
 | MF Standard II | `61-70` | `Not Synchronized` | 85 |
 | MF Premium | `71-80` | `Powershift` | 105 |
 
-但这张表不能直接算距离，因为里面有区间、文字类别、不同类型的字段。  
-所以程序还要读 `Feature_data` 这张说明表：
+But this table cannot be used to compute distance directly, because it contains ranges, text categories, and different types of fields.  
+So the program also reads the `Feature_data` description sheet:
 
 | feature_name | data_types | normalization_method | ideal_direction |
 |---|---|---|---|
@@ -145,7 +145,7 @@ Distance analysis 不能直接拿原始 Excel 来算。
 | transmission_type | nominal | none | neutral |
 | tank_capacity | metric | z-score | higher |
 
-预处理之后，程序会把它变成 distance analysis 可以使用的数字表：
+After preprocessing, the program turns it into a numeric table that distance analysis can use:
 
 | product | hp_range | transmission_Synchronized | transmission_Not_Synchronized | transmission_Powershift | tank_capacity |
 |---|---:|---:|---:|---:|---:|
@@ -153,101 +153,101 @@ Distance analysis 不能直接拿原始 Excel 来算。
 | MF Standard II | 65.5 | 0 | 1 | 0 | 85 |
 | MF Premium | 75.5 | 0 | 0 | 1 | 105 |
 
-然后 distance matrix 才能比较：
+Only then can the distance matrix compare:
 
 |  | Essential II | Standard II | Premium |
 |---|---:|---:|---:|
-| Essential II | 0 | 小距离 | 大一点 |
-| Standard II | 小距离 | 0 | 大一点 |
-| Premium | 大一点 | 大一点 | 0 |
+| Essential II | 0 | small distance | a bit larger |
+| Standard II | small distance | 0 | a bit larger |
+| Premium | a bit larger | a bit larger | 0 |
 
-**没有 unified preprocessor 的问题：**
+**Problems without a unified preprocessor:**
 
-- tractor 脚本要自己知道 `61-70` 应该转成 65.5；
-- smartphone 脚本又要自己知道 `₹54,999.00` 要去掉货币符号和逗号；
-- 如果再来一个 bicycle 数据集，又要再写一套 bicycle 规则；
-- 后面的 conjoint 模块也要分别理解每个数据集的特殊格式。
+- the tractor script has to know on its own that `61-70` should become 65.5;
+- the smartphone script has to know on its own that `₹54,999.00` needs its currency symbol and commas stripped;
+- if another bicycle dataset comes along, yet another set of bicycle rules has to be written;
+- the later conjoint modules would also have to understand each dataset's special format separately.
 
-**现在 unified preprocessor 的效果：**
+**What the unified preprocessor now achieves:**
 
-- 不管是 tractor、smartphone 还是 user upload，都先用同一种 `Feature_data` schema 描述字段；
-- 程序根据 schema 判断每列是 metric、ordinal、binary 还是 nominal；
-- 程序统一输出 `preprocessed_output.csv`；
-- distance matrix 和后面的 conjoint 模块都只需要读取这个统一输出。
+- whether it is tractor, smartphone, or user upload, every field is first described with the same `Feature_data` schema;
+- the program decides from the schema whether each column is metric, ordinal, binary, or nominal;
+- the program produces a unified `preprocessed_output.csv`;
+- both the distance matrix and the later conjoint modules only need to read this unified output.
 
-**听众该记住：**  
-Conjoint 模块需要统一数据语言，不能建立在几套重复脚本上。
-
----
-
-### 6. 原问题二：别人很难复现流程 — *Hard to run, hard to build on*
-
-**这一页要表达：**  
-P1 还要解决“团队其他人能不能跑起来”的问题。
-
-**可以怎么讲：**  
-如果一个队友想继续做 Module 2 或 Module 3，他不能先花很多时间猜：
-
-- 要装哪些依赖；
-- 先跑哪个文件；
-- 结果文件在哪里；
-- 哪个输出可以给下一个模块用。
-
-如果基础流程不清楚，后面做 questionnaire、conjoint computation 和 weighted distance 都会被拖慢。
-
-**和 Exposé 的关系：**  
-P1 的任务包括 run existing tool、get Streamlit running for everyone、define unified attribute schema。  
-这些都是后续 P2/P3 的前置条件。
-
-**听众该记住：**  
-这次 P1 的价值，是让后续模块可以在同一个可复现的基础上继续开发。
+**Key takeaway:**  
+The conjoint modules need a unified data language, and cannot be built on several repeated scripts.
 
 ---
 
-## 第三部分：这次 P1 我具体改了什么（第 7–10 页）
+### 6. Problem two: it was hard for others to reproduce the workflow: *Hard to run, hard to build on*
 
-### 7. 核心思路 — *One schema connects distance and conjoint*
+**What this slide should convey:**  
+P1 also has to solve the problem of "can the rest of the team get it running."
 
-**这一页要表达：**  
-新设计的核心不是只服务 distance analysis，而是同时为 distance 和 conjoint 准备数据。
+**How to present it:**  
+If a teammate wants to continue with Module 2 or Module 3, they should not first have to spend a lot of time guessing:
 
-**可以怎么讲：**  
-现在用户不只是上传产品数据，还要在 `Feature_data` 里描述每个属性：
+- which dependencies to install;
+- which file to run first;
+- where the result files are;
+- which output can be handed to the next module.
 
-- 这个属性是什么类型；
-- 是否参与分析；
-- 怎么标准化；
-- 在 conjoint 里是不是一个 attribute；
-- 有哪些 conjoint levels；
-- 应该出现在问卷的哪个部分。
+If the basic workflow is unclear, the later work on the questionnaire, conjoint computation, and weighted distance will all be slowed down.
 
-这样同一份 schema 可以同时服务两个方向：  
-前面给 distance matrix 用，后面给 questionnaire generator 和 conjoint computation 用。
+**Relation to the Exposé:**  
+The P1 tasks include run existing tool, get Streamlit running for everyone, and define unified attribute schema.  
+These are all prerequisites for the later P2/P3.
 
-**听众该记住：**  
-schema 是 distance analysis 和 conjoint analysis 之间的桥。
+**Key takeaway:**  
+The value of this P1 is to let the later modules keep building on the same reproducible foundation.
 
 ---
 
-### 8. 改进一：预处理变成通用 Module 1 — *A universal preprocessor*
+## Part 3: What I specifically changed in this P1 (pages 7-10)
 
-**这一页要表达：**  
-我已经把旧的预处理逻辑整理成 Module 1 的基础版本。
+### 7. Core idea: *One schema connects distance and conjoint*
 
-**可以怎么讲：**  
-现在核心清洗逻辑集中在 `preprocessing.py` 里。  
-拖拉机、手机、用户上传数据都可以通过同一个 universal preprocessor 处理，而不是各自维护一套规则。
+**What this slide should convey:**  
+The core of the new design is not to serve only distance analysis, but to prepare data for both distance and conjoint at the same time.
 
-**它为 conjoint 准备了什么：**
+**How to present it:**  
+Now the user not only uploads product data, but also describes each attribute in `Feature_data`:
 
-- 统一读取 `Edited` 和 `Feature_data`；
-- 输出可计算的 `preprocessed_output.csv`；
-- 保留后续模块需要的属性 metadata；
-- 让不同产品类别走同一个入口。
+- what type this attribute is;
+- whether it participates in the analysis;
+- how it is standardized;
+- whether it is an attribute in conjoint;
+- which conjoint levels it has;
+- which part of the survey it should appear in.
 
-**实际流程对比：**
+This way, the same schema can serve both directions at once:  
+the front end uses it for the distance matrix, and the back end uses it for the questionnaire generator and conjoint computation.
 
-以前的流程更像这样：
+**Key takeaway:**  
+The schema is the bridge between distance analysis and conjoint analysis.
+
+---
+
+### 8. Improvement one: preprocessing becomes the universal Module 1: *A universal preprocessor*
+
+**What this slide should convey:**  
+I have already organized the old preprocessing logic into a baseline version of Module 1.
+
+**How to present it:**  
+The core cleaning logic is now centralized in `preprocessing.py`.  
+Tractor, smartphone, and user-upload data can all be processed through the same universal preprocessor, instead of each maintaining its own set of rules.
+
+**What it prepares for conjoint:**
+
+- reads `Edited` and `Feature_data` in a unified way;
+- outputs a computable `preprocessed_output.csv`;
+- preserves the attribute metadata the later modules need;
+- routes different product categories through the same entry point.
+
+**Comparison of the actual workflow:**
+
+The previous workflow was more like this:
 
 ```text
 Tractor Excel
@@ -261,10 +261,10 @@ Smartphone Excel
   → smartphone distance matrix
 ```
 
-问题是：两个数据集虽然最后都要进入 distance analysis，但前面的清洗规则分散在不同地方。  
-如果后面要做 conjoint questionnaire，就很难复用这套流程。
+The problem is: although both datasets ultimately enter distance analysis, the upstream cleaning rules are scattered in different places.  
+If you later want to build a conjoint questionnaire, this workflow is hard to reuse.
 
-现在的流程变成：
+The workflow now becomes:
 
 ```text
 Any product Excel
@@ -276,148 +276,148 @@ Any product Excel
   → questionnaire / conjoint / weighted distance later
 ```
 
-**具体对比：**
+**Example:**
 
-| 原始数据 | schema 告诉程序 | 统一预处理输出 | 后面怎么用 |
+| Raw data | What the schema tells the program | Unified preprocessing output | How it is used later |
 |---|---|---|---|
-| Tractor `hp_range = 61-70` | 这是 ordinal，数值越高越好 | `65.5` | 可进入 technical distance；以后也能作为 conjoint attribute |
-| Tractor `transmission_type = Synchronized` | 这是 nominal，有多个 level | `transmission_Synchronized = 1` | 可比较配置差异；以后可生成 transmission 问卷题 |
-| Smartphone `price = ₹54,999.00` | 这是 metric，价格越低越好 | `54999` 再标准化 | 可进入 technical distance；以后可做价格相关分析 |
-| Smartphone `os = Android v13` | 这是 nominal | `os_Android_v13 = 1` | 可比较系统差异；以后可决定是否进入 conjoint |
+| Tractor `hp_range = 61-70` | This is ordinal, higher is better | `65.5` | Can enter technical distance; can later serve as a conjoint attribute |
+| Tractor `transmission_type = Synchronized` | This is nominal, with multiple levels | `transmission_Synchronized = 1` | Can compare configuration differences; can later generate a transmission survey question |
+| Smartphone `price = ₹54,999.00` | This is metric, lower price is better | `54999`, then standardized | Can enter technical distance; can later support price-related analysis |
+| Smartphone `os = Android v13` | This is nominal | `os_Android_v13 = 1` | Can compare OS differences; can later decide whether to enter conjoint |
 
-可以口头讲成一句话：  
-以前是“每个数据集自己写一套翻译规则”；现在是“所有数据集都先填同一种说明表，程序按说明表翻译成 distance/conjoint 都能读的数字语言”。
+You can state it verbally in one sentence:  
+before, "each dataset wrote its own set of translation rules"; now, "every dataset first fills in the same description sheet, and the program translates it, per that sheet, into a numeric language both distance and conjoint can read."
 
-**和 Exposé 的关系：**  
-Module 1 原本属于 P2，但这次已经提前开始，为 P2 的 Module 2 和 Module 3 铺路。
-
----
-
-### 9. 改进二：schema 模板已经包含 conjoint 字段 — *The template is ready for conjoint*
-
-**这一页要表达：**  
-这次不只是清洗数据，也把后续 conjoint 需要的信息提前放进模板。
-
-**可以怎么讲：**  
-新的 `feature_schema_template.xlsx` 不只描述 distance analysis 所需字段，比如数据类型和标准化方法。  
-它还加入了后续 conjoint 模块会用到的字段：
-
-- `conjoint_role`：这个字段是不是 conjoint attribute；
-- `conjoint_levels`：这个属性有哪些可选 level；
-- `conjoint_question_type`：问卷里用 rating、pairwise、calibration 还是 WTP；
-- `conjoint_section`：它属于问卷的哪个部分。
-
-**为什么重要：**  
-Module 2 以后可以直接根据这些字段自动生成问卷。  
-Module 3 也能根据这些字段把问卷答案映射回属性和 level。
-
-**实际例子：**
-
-以前 smartphone 的 `Feature_data` 主要只告诉程序：
-
-- `price` 是 metric；
-- `processor` 是 nominal；
-- `battery` 是 ordinal；
-- 这些字段要不要进入 distance analysis。
-
-这对普通 distance matrix 已经够用。  
-但对 conjoint 还不够，因为程序还不知道“问卷里要怎么问”。
-
-现在 schema template 可以继续补充：
-
-- `transmission_type` 是 conjoint attribute；
-- 它的 levels 是 `not synchronized; synchronized; powershift; CVT`；
-- 问卷题型是 `rating`；
-- 它属于 `B1_rating` 部分。
-
-这样 Module 2 就不用人工重新设计这道题，而是可以从 schema 里自动生成问卷题目。
-
-**听众该记住：**  
-P1 的 schema 已经不是只为 distance matrix 设计，而是在为 conjoint pipeline 做准备。
+**Relation to the Exposé:**  
+Module 1 originally belonged to P2, but it has already been started early this time, paving the way for Module 2 and Module 3 in P2.
 
 ---
 
-### 10. 改进三：一条命令跑通当前基线 — *One command for the current baseline*
+### 9. Improvement two: the schema template already includes conjoint fields: *The template is ready for conjoint*
 
-**这一页要表达：**  
-当前 distance analysis 基线已经可以稳定复现。
+**What this slide should convey:**  
+This time it is not just about cleaning data, but also about placing the information that later conjoint needs into the template in advance.
 
-**可以怎么讲：**  
-现在可以用 `./run.sh` 一条命令完成当前阶段的主要流程：
+**How to present it:**  
+The new `feature_schema_template.xlsx` describes not only the fields needed for distance analysis, such as data type and normalization method.  
+It also adds the fields the later conjoint modules will use:
 
-1. 安装或检查依赖；
-2. 对 tractors / smartphones / user upload 跑预处理；
-3. 生成普通 technical distance matrix；
-4. 打开 Streamlit dashboard。
+- `conjoint_role`: whether this field is a conjoint attribute;
+- `conjoint_levels`: which selectable levels this attribute has;
+- `conjoint_question_type`: whether the survey uses rating, pairwise, calibration, or WTP;
+- `conjoint_section`: which part of the survey it belongs to.
 
-**为什么这对 conjoint 重要：**  
-后面 Module 4 要做 weighted distance 时，需要和当前 technical distance 做对比。  
-所以我们必须先有一个稳定、可复现的 baseline。
+**Why it matters:**  
+From Module 2 onward, the survey can be generated automatically and directly from these fields.  
+Module 3 can also use these fields to map survey answers back to attributes and levels.
 
-**实际例子：**
+**Example:**
 
-| 数据集 | 当前一键流程已经能产出的 baseline |
+Before, the smartphone `Feature_data` mainly only told the program:
+
+- `price` is metric;
+- `processor` is nominal;
+- `battery` is ordinal;
+- whether these fields enter distance analysis.
+
+This is enough for a plain distance matrix.  
+But it is not enough for conjoint, because the program still does not know "how to ask about it in the survey."
+
+Now the schema template can add more:
+
+- `transmission_type` is a conjoint attribute;
+- its levels are `not synchronized; synchronized; powershift; CVT`;
+- the question type is `rating`;
+- it belongs to the `B1_rating` section.
+
+This way, Module 2 does not have to manually redesign this question, but can generate the survey question automatically from the schema.
+
+**Key takeaway:**  
+The P1 schema is no longer designed only for the distance matrix, but is preparing for the conjoint pipeline.
+
+---
+
+### 10. Improvement three: one command runs the current baseline: *One command for the current baseline*
+
+**What this slide should convey:**  
+The current distance analysis baseline can already be reproduced reliably.
+
+**How to present it:**  
+You can now use the single command `./run.sh` to complete the main workflow of the current phase:
+
+1. install or check dependencies;
+2. run preprocessing for tractors / smartphones / user upload;
+3. generate the plain technical distance matrix;
+4. open the Streamlit dashboard.
+
+**Why this matters for conjoint:**  
+When Module 4 later builds the weighted distance, it needs to be compared against the current technical distance.  
+So we must first have a stable, reproducible baseline.
+
+**Example:**
+
+| Dataset | Baseline the current one-command workflow can already produce |
 |---|---|
-| Tractor | 166 个产品，43 个处理后的特征，生成 166 × 166 的 technical distance matrix |
-| Smartphone | 1020 个产品，351 个处理后的特征，生成 1020 × 1020 的 technical distance matrix |
+| Tractor | 166 products, 43 processed features, producing a 166 × 166 technical distance matrix |
+| Smartphone | 1020 products, 351 processed features, producing a 1020 × 1020 technical distance matrix |
 
-等 Module 4 完成后，同一批产品会再生成一份 customer-weighted distance matrix。  
-到时候 dashboard 就可以对比：技术上最相似的产品，和客户偏好加权后最相似的产品，是不是同一批。
+Once Module 4 is done, the same set of products will produce another customer-weighted distance matrix.  
+At that point the dashboard can compare: whether the products that are most similar technically and the products that are most similar after weighting by customer preferences are the same set.
 
-**听众该记住：**  
-这一步不是最终 conjoint 结果，但它是之后对比 customer-weighted distance 的基准线。
+**Key takeaway:**  
+This step is not the final conjoint result, but it is the baseline for later comparison against the customer-weighted distance.
 
 ---
 
-## 第四部分：对照 Exposé 和下一步（第 11–12 页）
+## Part 4: Mapping against the Exposé and the next step (pages 11-12)
 
-### 11. P1 完成情况 — *Phase 1: foundation for conjoint*
+### 11. P1 completion status: *Phase 1: foundation for conjoint*
 
-**这一页要表达：**  
-用 Exposé 的 P1 任务来对账，同时说明这些任务如何支撑 conjoint 目标。
+**What this slide should convey:**  
+Reconcile against the P1 tasks in the Exposé, and explain how these tasks support the conjoint goal.
 
-| Exposé 里的 P1 任务 | 状态 | 这次交付 | 对后续 conjoint 的作用 |
+| P1 task in the Exposé | Status | Delivered this time | Role for later conjoint |
 |---|:---:|---|---|
-| Run existing pipeline on all datasets | 完成 | tractors / smartphones / user upload 都能生成结果 | 提供 technical baseline |
-| Get Streamlit running for everyone | 完成 | `./run.sh`、依赖清单、安装说明 | 让团队能复现和继续开发 |
-| Define unified attribute schema | 完成 | 带 validation 的 schema template | Module 2/3 读取属性和 levels |
-| Module 1: Universal Preprocessor | 提前开始 | 统一预处理引擎 | 后续所有模块的数据入口 |
+| Run existing pipeline on all datasets | Done | tractors / smartphones / user upload can all produce results | Provides the technical baseline |
+| Get Streamlit running for everyone | Done | `./run.sh`, dependency list, install instructions | Lets the team reproduce and keep developing |
+| Define unified attribute schema | Done | schema template with validation | Module 2/3 read attributes and levels |
+| Module 1: Universal Preprocessor | Started early | unified preprocessing engine | Data entry point for all later modules |
 
-**可以怎么讲：**  
-P1 没有直接产出 conjoint utilities 或 importance scores。  
-它的作用是把原来的 distance analysis 工具整理成一个可以承接 conjoint 模块的基础平台。
-
----
-
-### 12. 下一步路线 — *Next: generate, compute, weight, compare*
-
-**这一页要表达：**  
-清楚说明从现在到最终 conjoint-based tool 还要做什么。
-
-**可以怎么讲：**  
-根据 Exposé，后面的路线是：
-
-1. **Module 2：Questionnaire Generator**  
-   根据 schema 自动生成 conjoint 问卷。
-
-2. **Module 3：Conjoint Computation**  
-   用问卷结果计算 part-worth utility 和 relative importance。  
-   这里要复现 Nicolas 的 N=381 tractor reference。
-
-3. **Module 4：Weighted Distance**  
-   把 relative importance 作为权重放回 distance matrix。
-
-4. **Module 5：Comparative Dashboard**  
-   在 dashboard 里对比 technical distance 和 customer-weighted distance。
-
-**收尾句：**  
-现在我们完成的是从 distance analysis 走向 conjoint analysis 的地基。  
-下一阶段的重点，是把客户偏好真正转成权重，并让它改变距离计算结果。
+**How to present it:**  
+P1 did not directly produce conjoint utilities or importance scores.  
+Its role is to organize the original distance analysis tool into a foundation platform that can carry the conjoint modules.
 
 ---
 
-## 备注
+### 12. Next steps: *Next: generate, compute, weight, compare*
 
-- 幻灯片标题可以继续用英文，但叙事主线建议改成“current distance baseline → conjoint extension → weighted customer view”。
-- 不要把 P1 讲成“已经完成 conjoint analysis”。P1 完成的是基础改造和 Module 1 的提前起步。
-- 如果继续改 HTML，优先把第 1–3 页和第 11–12 页改掉，因为这些页决定听众是否理解项目方向。
+**What this slide should convey:**  
+Clearly explain what still has to be done from now to the final conjoint-based tool.
+
+**How to present it:**  
+According to the Exposé, the road ahead is:
+
+1. **Module 2: Questionnaire Generator**  
+   Automatically generate the conjoint survey from the schema.
+
+2. **Module 3: Conjoint Computation**  
+   Use the survey results to compute part-worth utility and relative importance.  
+   This is where Nicolas's N=381 tractor reference needs to be reproduced.
+
+3. **Module 4: Weighted Distance**  
+   Put relative importance back into the distance matrix as weights.
+
+4. **Module 5: Comparative Dashboard**  
+   Compare technical distance and customer-weighted distance in the dashboard.
+
+**Closing line:**  
+What we have completed now is the foundation that goes from distance analysis toward conjoint analysis.  
+The focus of the next phase is to truly turn customer preferences into weights, and let them change the distance calculation results.
+
+---
+
+## Notes
+
+- The slide titles can stay in English, but the narrative storyline is recommended to change to "current distance baseline → conjoint extension → weighted customer view."
+- Do not present P1 as "conjoint analysis is already complete." What P1 completed is the foundation refactor and the early start of Module 1.
+- If you keep editing the HTML, prioritize changing pages 1-3 and pages 11-12, because these pages determine whether the audience understands the project direction.
