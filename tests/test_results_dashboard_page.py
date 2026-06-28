@@ -175,3 +175,31 @@ def test_simulator_default_products_are_differentiated(ctx) -> None:
     first = rd._default_product_spec(ctx, 0)
     second = rd._default_product_spec(ctx, 1)
     assert first != second  # different default levels per product
+
+
+@pytest.mark.unit
+def test_product_label() -> None:
+    assert rd._product_label("survey_responses_computers") == "Computers"
+    assert rd._product_label("survey_responses_smart_phones") == "Smart Phones"
+
+
+@pytest.mark.unit
+def test_pick_responses_dir_defaults_to_active_product(monkeypatch) -> None:
+    discovered = [
+        ("Computers", "outputs/survey_responses_computers"),
+        ("Smartphones", "outputs/survey_responses_smartphones"),
+    ]
+    monkeypatch.setattr(rd, "_discover_response_dirs", lambda: discovered)
+    monkeypatch.setattr(
+        rd, "_default_responses_dir", lambda: "outputs/survey_responses_smartphones"
+    )
+    # The dropdown pre-selects the folder matching the active product spec.
+    assert rd._pick_responses_dir(FakeSt()) == "outputs/survey_responses_smartphones"
+
+
+@pytest.mark.unit
+def test_pick_responses_dir_falls_back_to_text_input(monkeypatch) -> None:
+    monkeypatch.setattr(rd, "_discover_response_dirs", lambda: [])
+    monkeypatch.setattr(rd, "_default_responses_dir", lambda: "outputs/survey_responses_x")
+    # No folders discovered → plain text input pre-filled with the default path.
+    assert rd._pick_responses_dir(FakeSt()) == "outputs/survey_responses_x"

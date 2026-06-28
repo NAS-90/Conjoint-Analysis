@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 import pandas as pd
@@ -514,3 +515,54 @@ def write_acbc_responses(df: pd.DataFrame, path: str | "pd.io.parsers.PathLike[s
 def read_acbc_responses(path: str | "pd.io.parsers.PathLike[str]") -> pd.DataFrame:
     """Read ``acbc_responses.csv`` produced by :func:`write_acbc_responses`."""
     return pd.read_csv(path)
+
+
+#: Filename prefix the survey app's "Send my responses" button uses.
+RESPONSES_FILE_PREFIX = "responses_"
+
+
+def respondent_id_from_filename(name: str | Path) -> str:
+    """Derive a respondent id from one questionnaire's filename.
+
+    Each fielded questionnaire is a single CSV (``responses_<id>.csv`` from the
+    survey app). The id is the file stem with a leading ``responses_`` dropped,
+    so ``responses_P017.csv`` → ``P017`` and ``john.csv`` → ``john``.
+    """
+    stem = Path(str(name)).stem
+    if stem.startswith(RESPONSES_FILE_PREFIX):
+        stem = stem[len(RESPONSES_FILE_PREFIX):]
+    return stem or "respondent"
+
+
+def read_respondent_csv(source: object, name: str | Path | None = None) -> pd.DataFrame:
+    """Read ONE questionnaire CSV, stamping ``respondent`` from its filename.
+
+    ``source`` may be a path or a file-like (e.g. a Streamlit upload); pass
+    ``name`` when ``source`` has no usable path of its own (an upload's
+    ``.name``). The single returned frame has its :data:`RESPONDENT_COL` set to
+    :func:`respondent_id_from_filename`, enforcing **one file == one respondent**.
+    """
+    frame = read_acbc_responses(source)
+    label = name if name is not None else source
+    return frame.assign(**{RESPONDENT_COL: respondent_id_from_filename(label)})
+
+
+def read_responses_dir(folder: str | Path) -> tuple[pd.DataFrame, list[str]]:
+    """Read a folder of per-respondent questionnaire CSVs into one long frame.
+
+    The collect-the-survey counterpart to :func:`read_acbc_responses`: each
+    ``*.csv`` in ``folder`` is one completed questionnaire, read via
+    :func:`read_respondent_csv` so ids stay unique and traceable across files no
+    matter what each person typed in the survey.
+
+    Returns the concatenated long-format frame plus the sorted list of files
+    read. Raises if ``folder`` is not a directory or holds no ``*.csv``.
+    """
+    directory = Path(folder)
+    if not directory.is_dir():
+        raise NotADirectoryError(f"not a folder: {directory}")
+    files = sorted(directory.glob("*.csv"))
+    if not files:
+        raise FileNotFoundError(f"no questionnaire CSVs (*.csv) found in {directory}")
+    frames = [read_respondent_csv(path, path.name) for path in files]
+    return concat_responses(*frames), [str(path) for path in files]

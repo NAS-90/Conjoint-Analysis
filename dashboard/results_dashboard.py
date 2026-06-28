@@ -30,11 +30,13 @@ import pandas as pd
 
 from conjoint.acbc import simulation as sim
 from conjoint.acbc.responses import (
-    RESPONSE_VALUE_COL,
     STAGE_COL,
     STAGE_TOURNAMENT,
-    read_acbc_responses,
+    concat_responses,
+    read_respondent_csv,
+    read_responses_dir,
 )
+from dashboard.exporting import download_csv_button, render_chart
 from dashboard.results_analysis import SurveyResults, analyze_survey_results
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -117,28 +119,6 @@ def band_label(ctx: SurveyContext, code: str) -> str:
 # ---------------------------------------------------------------------------
 # Streamlit caching wrappers (thin; the core stays pure/testable)
 # ---------------------------------------------------------------------------
-def _cached_synthetic(n_respondents: int, seed: int) -> pd.DataFrame:
-    import streamlit as st
-
-    @st.cache_data(show_spinner="Generating synthetic responses…")
-    def _gen(n: int, s: int) -> pd.DataFrame:
-        from conjoint.acbc import respondent_sim as rs
-
-        ctx = load_context()
-        frame, _, _ = rs.generate_synthetic_responses(
-            ctx.spec,
-            questions=ctx.questions,
-            wtp_features=ctx.features,
-            amount_bands=ctx.bands,
-            wtp_feature_attribute=ctx.feature_attribute,
-            n_respondents=n,
-            seed=s,
-        )
-        return frame
-
-    return _gen(n_respondents, seed)
-
-
 def _cached_results(df: pd.DataFrame, hb_iter: int, seed: int) -> SurveyResults:
     import streamlit as st
 
@@ -169,11 +149,23 @@ def render_results_dashboard() -> None:
         "attribute importance, part-worth utilities, willingness to pay, market "
         "simulation, purchase likelihood and respondent segments."
     )
+    st.caption(
+        "💾 Save any chart as an image with the 📷 button in its top-right toolbar; "
+        "every table below has a CSV download underneath it."
+    )
 
     ctx = load_context()
     df = _load_responses(st, ctx)
     if df is None:
         return
+
+    download_csv_button(
+        st.sidebar,
+        df,
+        label="⬇️ Download full dataset (CSV)",
+        file_name="acbc_responses.csv",
+        key="dl_full_dataset",
+    )
 
     hb_iter = int(
         st.sidebar.select_slider(
@@ -206,44 +198,103 @@ def render_results_dashboard() -> None:
     _render_segments(st, results, ctx)
 
 
+#: Per-product questionnaire folders live under ``outputs/survey_responses_<product>``.
+RESPONSES_DIR_PREFIX = "survey_responses_"
+
+
+def _default_responses_dir() -> str:
+    """The conventional per-product folder of collected questionnaires."""
+    stem = _spec_path().stem.replace("questionnaire_spec", "").strip("_") or "default"
+    return f"outputs/{RESPONSES_DIR_PREFIX}{stem}"
+
+
+def _product_label(folder_name: str) -> str:
+    """``survey_responses_computers`` → ``Computers`` (human-facing dropdown text)."""
+    product = folder_name[len(RESPONSES_DIR_PREFIX):] or folder_name
+    return product.replace("_", " ").title()
+
+
+def _discover_response_dirs() -> list[tuple[str, str]]:
+    """``(label, path)`` for every ``outputs/survey_responses_<product>`` folder present."""
+    base = ROOT / "outputs"
+    if not base.is_dir():
+        return []
+    return [
+        (_product_label(path.name), f"outputs/{path.name}")
+        for path in sorted(base.glob(f"{RESPONSES_DIR_PREFIX}*"))
+        if path.is_dir()
+    ]
+
+
+def _pick_responses_dir(st) -> str:
+    """Product dropdown over discovered folders (+ an 'Other folder…' text escape)."""
+    discovered = _discover_response_dirs()
+    other = "Other folder…"
+    if not discovered:
+        return st.sidebar.text_input("Responses folder", value=_default_responses_dir())
+
+    paths = {label: path for label, path in discovered}
+    choices = list(paths) + [other]
+    default_path = _default_responses_dir()
+    default_label = next(
+        (label for label, path in discovered if path == default_path), choices[0]
+    )
+    picked = st.sidebar.selectbox(
+        "Product",
+        options=choices,
+        index=choices.index(default_label),
+        help="Pick which collected survey to analyse — one folder per product.",
+    )
+    if picked == other:
+        return st.sidebar.text_input("Responses folder", value=default_path)
+    return paths[picked]
+
+
 def _load_responses(st, ctx: SurveyContext) -> pd.DataFrame | None:
-    """Data-source picker → validated long-format frame (or ``None``)."""
+    """Data-source picker → validated long-format frame (or ``None``).
+
+    Reads the per-respondent ``responses_<id>.csv`` questionnaires the survey
+    app produces — either a whole local folder of them or an ad-hoc upload of
+    one or more. One file is one completed questionnaire.
+    """
     source = st.sidebar.radio(
         "Data source",
-        ["Synthetic responses", "Upload CSV", "Local path"],
-        help="Requires a long-format acbc_responses.csv; by default a synthetic dataset is generated on the fly.",
+        ["Local responses folder", "Upload questionnaires"],
+        help=(
+            "Reads the per-respondent responses_<id>.csv files the survey app "
+            "collects — a local folder of them, or an upload of one or more."
+        ),
     )
     df: pd.DataFrame | None = None
-    if source == "Synthetic responses":
-        n = int(st.sidebar.slider("Respondents (N)", min_value=20, max_value=500, value=200, step=10))
-        seed = int(st.sidebar.number_input("Generation seed", value=2026, step=1))
-        df = _cached_synthetic(n, seed)
-        st.sidebar.download_button(
-            "Download this synthetic CSV",
-            data=df.to_csv(index=False).encode("utf-8"),
-            file_name="synthetic_responses.csv",
-            mime="text/csv",
-        )
-    elif source == "Upload CSV":
-        uploaded = st.sidebar.file_uploader("acbc_responses.csv", type="csv")
-        if uploaded is None:
-            st.info("Please upload a long-format acbc_responses.csv in the sidebar.")
-            return None
-        df = pd.read_csv(uploaded)
-    else:
-        stem = _spec_path().stem.replace("questionnaire_spec", "").strip("_") or "default"
-        default_path = f"outputs/synthetic_responses_{stem}.csv"
-        path = st.sidebar.text_input("CSV path", value=default_path)
-        if not path:
+    if source == "Local responses folder":
+        folder = _pick_responses_dir(st)
+        if not folder:
+            st.info("Enter the folder holding the survey's responses_<id>.csv files.")
             return None
         try:
-            df = read_acbc_responses(path)
+            df, files = read_responses_dir(folder)
         except Exception as exc:
-            st.error(f"Read failed: {exc}")
+            st.error(f"Could not read questionnaires: {exc}")
             return None
+        st.sidebar.caption(f"Loaded {len(files)} questionnaire(s) from `{folder}`.")
+    else:  # Upload questionnaires
+        uploaded = st.sidebar.file_uploader(
+            "responses_<id>.csv files",
+            type="csv",
+            accept_multiple_files=True,
+        )
+        if not uploaded:
+            st.info("Upload one or more responses_<id>.csv files in the sidebar.")
+            return None
+        try:
+            df = concat_responses(*(read_respondent_csv(item, item.name) for item in uploaded))
+        except Exception as exc:
+            st.error(f"Could not read uploaded questionnaires: {exc}")
+            return None
+        st.sidebar.caption(f"Loaded {len(uploaded)} uploaded questionnaire(s).")
 
     if STAGE_COL not in df.columns or not (df[STAGE_COL] == STAGE_TOURNAMENT).any():
-        st.error("This file has no tournament rows, so ACBC estimation is not possible.")
+        st.error("These questionnaires have no tournament (B4) rows, so ACBC estimation is not possible.")
         return None
     return df
 
@@ -263,6 +314,13 @@ def _render_overview(st, results: SurveyResults) -> None:
         help="Gelman-Rubin < 1.1 indicates convergence. It runs high with few preview iterations; just raise the iteration count.",
     )
     col3.caption("Converged" if converged else "Preview run (consider raising HB iterations)")
+    download_csv_button(
+        st,
+        results.hb_utilities,
+        label="⬇️ Download per-respondent utilities (CSV)",
+        file_name="hb_utilities.csv",
+        key="dl_hb_utilities",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +342,16 @@ def _render_importance(st, results: SurveyResults, ctx: SurveyContext) -> None:
         title="Relative importance (Range_A / ΣRange)",
     )
     fig.update_layout(xaxis_tickformat=".0%", xaxis_title="", yaxis_title="")
-    st.plotly_chart(fig, use_container_width=True)
+    render_chart(st, fig, filename="attribute_importance")
+    importance_csv = results.importance.copy()
+    importance_csv.insert(0, "Attribute", importance_csv["attribute"].map(attr_name))
+    download_csv_button(
+        st,
+        importance_csv,
+        label="⬇️ Download importance (CSV)",
+        file_name="attribute_importance.csv",
+        key="dl_importance",
+    )
     top = imp.sort_values("relative_importance", ascending=False).iloc[0]
     st.caption(
         f"The most important attribute is **{top['Attribute']}** "
@@ -335,12 +402,19 @@ def _render_partworths(st, results: SurveyResults, ctx: SurveyContext) -> None:
         title=f"{attr_name(chosen)} — utility by level",
     )
     fig.update_layout(xaxis_title="", yaxis_title="")
-    st.plotly_chart(fig, use_container_width=True)
+    render_chart(st, fig, filename=f"partworths_{chosen}")
     with st.expander("Show part-worth utilities for all attributes"):
         st.dataframe(
             tidy[["Attribute", "Level", "Utility"]].round(1),
             hide_index=True,
             use_container_width=True,
+        )
+        download_csv_button(
+            st,
+            tidy[["Attribute", "Level", "Utility"]].round(3),
+            label="⬇️ Download part-worth utilities (CSV)",
+            file_name="partworth_utilities.csv",
+            key="dl_partworths",
         )
 
 
@@ -368,7 +442,15 @@ def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
                         "Mean premium ($)": (f"${fw.mean_usd:,.0f}" if fw.mean_usd is not None else "—"),
                     }
                 )
-            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            stated_df = pd.DataFrame(rows)
+            st.dataframe(stated_df, hide_index=True, use_container_width=True)
+            download_csv_button(
+                st,
+                stated_df,
+                label="⬇️ Download stated WTP (CSV)",
+                file_name="wtp_stated.csv",
+                key="dl_wtp_stated",
+            )
             feature_ids = list(results.wtp.features.keys())
             picked = st.selectbox(
                 "View band distribution for a feature",
@@ -386,7 +468,7 @@ def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
             )
             fig = px.bar(dist, x="Band", y="Count", title=feature_label(ctx, picked))
             fig.update_layout(xaxis_title="", yaxis_title="")
-            st.plotly_chart(fig, use_container_width=True)
+            render_chart(st, fig, filename=f"wtp_bands_{picked}")
 
     with right:
         st.markdown("**Derived WTP** — dollar value converted from the price part-worth utilities")
@@ -405,6 +487,13 @@ def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
                 table[["Attribute", "Level", "Value vs. worst level ($)"]],
                 hide_index=True,
                 use_container_width=True,
+            )
+            download_csv_button(
+                st,
+                table[["Attribute", "Level", "Value vs. worst level ($)"]],
+                label="⬇️ Download derived WTP (CSV)",
+                file_name="wtp_derived.csv",
+                key="dl_wtp_derived",
             )
 
 
@@ -459,7 +548,14 @@ def _render_simulator(st, results: SurveyResults, ctx: SurveyContext) -> None:
         title="Share of preference",
     )
     fig.update_layout(yaxis_tickformat=".0%", xaxis_title="", yaxis_title="")
-    st.plotly_chart(fig, use_container_width=True)
+    render_chart(st, fig, filename="share_of_preference")
+    download_csv_button(
+        st,
+        share_df,
+        label="⬇️ Download share of preference (CSV)",
+        file_name="share_of_preference.csv",
+        key="dl_sim_shares",
+    )
 
     to_remove = st.multiselect(
         "Remove product(s) to see share transfer",
@@ -479,6 +575,13 @@ def _render_simulator(st, results: SurveyResults, ctx: SurveyContext) -> None:
         for column in ("Share before", "Share after", "Change"):
             transfer[column] = transfer[column].map(lambda v: f"{v:.1%}")
         st.dataframe(transfer, hide_index=True, use_container_width=True)
+        download_csv_button(
+            st,
+            transfer,
+            label="⬇️ Download share transfer (CSV)",
+            file_name="share_transfer.csv",
+            key="dl_sim_transfer",
+        )
         st.caption("A positive \"Change\" means the product absorbed share from the removed product(s).")
 
 
@@ -500,7 +603,14 @@ def _render_calibration(st, results: SurveyResults) -> None:
     )
     fig = px.bar(dist, x="Purchase intent (0-5)", y="Count", title="Purchase intent distribution (0 = never buy, 5 = definitely buy)")
     fig.update_layout(xaxis_title="", yaxis_title="")
-    col2.plotly_chart(fig, use_container_width=True)
+    render_chart(col2, fig, filename="purchase_intent")
+    download_csv_button(
+        col2,
+        dist,
+        label="⬇️ Download purchase-intent distribution (CSV)",
+        file_name="purchase_intent_distribution.csv",
+        key="dl_calibration",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -541,7 +651,14 @@ def _render_segments(st, results: SurveyResults, ctx: SurveyContext) -> None:
         title=_prompt(picked),
     )
     fig.update_layout(xaxis_title="", yaxis_title="")
-    st.plotly_chart(fig, use_container_width=True)
+    render_chart(st, fig, filename="respondent_segment")
+    download_csv_button(
+        st,
+        dist,
+        label="⬇️ Download answer distribution (CSV)",
+        file_name="segment_distribution.csv",
+        key="dl_segment",
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover — manual ``streamlit run``
