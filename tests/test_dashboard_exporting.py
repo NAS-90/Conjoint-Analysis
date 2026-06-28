@@ -7,6 +7,8 @@ image backend is needed.
 
 from __future__ import annotations
 
+import io
+
 import pandas as pd
 import pytest
 
@@ -14,7 +16,9 @@ from dashboard.exporting import (
     DEFAULT_IMAGE_SCALE,
     chart_config,
     download_csv_button,
+    download_workbook_button,
     render_chart,
+    workbook_bytes,
 )
 
 
@@ -85,3 +89,61 @@ def test_download_csv_button_rejects_non_dataframe() -> None:
     st = RecordingSt()
     with pytest.raises(TypeError):
         download_csv_button(st, {"not": "a frame"}, label="x", file_name="x.csv")
+
+
+@pytest.mark.unit
+def test_workbook_bytes_roundtrips_every_sheet() -> None:
+    sheets = {
+        "Importance": pd.DataFrame({"Attribute": ["RAM"], "value": [0.4]}),
+        "HB utilities": pd.DataFrame({"respondent": [1, 2], "u": [0.1, 0.2]}),
+    }
+    data = workbook_bytes(sheets)
+    back = pd.read_excel(io.BytesIO(data), sheet_name=None, engine="openpyxl")
+    assert set(back) == {"Importance", "HB utilities"}
+    pd.testing.assert_frame_equal(back["HB utilities"], sheets["HB utilities"])
+
+
+@pytest.mark.unit
+def test_workbook_bytes_sanitizes_and_truncates_sheet_titles() -> None:
+    long_invalid = "Willingness:to/pay [stated] " + "x" * 40
+    data = workbook_bytes({long_invalid: pd.DataFrame({"a": [1]})})
+    [title] = list(pd.read_excel(io.BytesIO(data), sheet_name=None, engine="openpyxl"))
+    assert len(title) <= 31
+    assert not set(title) & set("[]:*?/\\")
+
+
+@pytest.mark.unit
+def test_workbook_bytes_rejects_empty_mapping() -> None:
+    with pytest.raises(ValueError):
+        workbook_bytes({})
+
+
+@pytest.mark.unit
+def test_download_workbook_button_drops_empty_frames() -> None:
+    st = RecordingSt()
+    download_workbook_button(
+        st,
+        {"Has rows": pd.DataFrame({"a": [1]}), "Empty": pd.DataFrame()},
+        label="Download all results",
+        file_name="results.xlsx",
+        key="dl_all",
+    )
+    assert len(st.download_calls) == 1
+    call = st.download_calls[0]
+    assert call["file_name"] == "results.xlsx"
+    assert "spreadsheetml" in call["mime"]
+    # the empty sheet was dropped, so the workbook holds only the non-empty one
+    back = pd.read_excel(io.BytesIO(call["data"]), sheet_name=None, engine="openpyxl")
+    assert list(back) == ["Has rows"]
+
+
+@pytest.mark.unit
+def test_download_workbook_button_skips_when_all_empty() -> None:
+    st = RecordingSt()
+    download_workbook_button(
+        st,
+        {"Empty": pd.DataFrame()},
+        label="Download",
+        file_name="results.xlsx",
+    )
+    assert st.download_calls == []
