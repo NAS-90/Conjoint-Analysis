@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from conjoint.acbc import responses as r
 from conjoint.acbc.design import Profile
 
@@ -121,3 +123,51 @@ def test_concat_and_validate_accepts_all_new_stages() -> None:
     }
     # The blank-chosen value-style rows must pass validation.
     assert r.validate_acbc_responses(merged, ATTRIBUTE_LEVELS) == []
+
+
+# ---------------------------------------------------------------------------
+# Per-respondent questionnaire readers (collect-the-survey side)
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("responses_P017.csv", "P017"),
+        ("responses_r001.csv", "r001"),
+        ("john.csv", "john"),
+        ("/tmp/data/responses_42.csv", "42"),
+        ("responses_.csv", "respondent"),  # empty stem falls back
+    ],
+)
+def test_respondent_id_from_filename(name, expected) -> None:
+    assert r.respondent_id_from_filename(name) == expected
+
+
+def _write_one(path, respondent: str) -> None:
+    frame = r.assemble_wtp_responses(
+        [r.WtpResponse(respondent, 1, "camera", "none")], ATTRIBUTE_LEVELS
+    )
+    r.write_acbc_responses(frame, path)
+
+
+def test_read_respondent_csv_stamps_id_from_filename(tmp_path) -> None:
+    # The in-file id ("typed_1") is overridden by the filename → one file, one person.
+    path = tmp_path / "responses_P003.csv"
+    _write_one(path, "typed_1")
+    frame = r.read_respondent_csv(path, path.name)
+    assert list(frame[r.RESPONDENT_COL].unique()) == ["P003"]
+
+
+def test_read_responses_dir_concats_unique_respondents(tmp_path) -> None:
+    # Two people who both typed the same id stay distinct (ids come from filenames).
+    _write_one(tmp_path / "responses_P001.csv", "1")
+    _write_one(tmp_path / "responses_P002.csv", "1")
+    frame, files = r.read_responses_dir(tmp_path)
+    assert len(files) == 2
+    assert sorted(frame[r.RESPONDENT_COL].unique()) == ["P001", "P002"]
+
+
+def test_read_responses_dir_errors_are_explicit(tmp_path) -> None:
+    with pytest.raises(FileNotFoundError):
+        r.read_responses_dir(tmp_path)  # empty folder
+    with pytest.raises(NotADirectoryError):
+        r.read_responses_dir(tmp_path / "responses_P001.csv")  # not a folder
