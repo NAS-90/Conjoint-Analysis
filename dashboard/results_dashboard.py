@@ -46,7 +46,7 @@ ROOT = Path(__file__).resolve().parent.parent
 #: count and random seed are technical knobs, so they are not exposed in the
 #: UI: 4000 iterations gives the sampler more room to converge when Rhat is high
 #: keeps the read-out reproducible. The result is cached per dataset.
-HB_ITERATIONS = 10000
+HB_ITERATIONS = 20000
 HB_SEED = 0
 
 

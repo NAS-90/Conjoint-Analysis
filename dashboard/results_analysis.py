@@ -332,7 +332,7 @@ def analyze_survey_results(
         df,
         n_iter=hb_iter,
         burn_in=hb_iter // 2,
-        thinning=2,
+        thinning=10,
         n_chains=2,
         seed=seed,
     )

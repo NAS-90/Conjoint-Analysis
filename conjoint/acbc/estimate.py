@@ -552,11 +552,11 @@ def fit_hb(
     df: pd.DataFrame,
     *,
     attribute_levels: Mapping[str, Sequence[str]] | None = None,
-    n_iter: int = 10000,
+    n_iter: int = 20000,
     burn_in: int = 1000,
     thinning: int = 10,
     n_chains: int = 2,
-    step_scale: float = 0.3,
+    step_scale: float = 0.05,
     prior_cov_scale: float = 4.0,
     seed: int | None = None,
 ) -> HBFit:
