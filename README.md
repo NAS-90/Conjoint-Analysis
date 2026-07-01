@@ -27,7 +27,7 @@ timeline see [`../Docs/Expose_v3.md`](../Docs/Expose_v3.md).
 
 - [The big picture](#the-big-picture)
 - [Quickstart](#quickstart)
-- [The three apps](#the-three-apps)
+- [The Streamlit apps](#the-streamlit-apps)
 - [Input data format](#input-data-format)
 - [The pipeline, step by step](#the-pipeline-step-by-step)
 - [Outputs](#outputs)
@@ -46,7 +46,7 @@ extends it with the conjoint layer.
 | # | Module | What it does | Entry point |
 |---|--------|--------------|-------------|
 | 1 | Universal Preprocessor | Reads any workbook via its `Feature_data` sheet and emits one numeric matrix. | `preprocessing.py` |
-| 2 | Questionnaire Generator | Turns attribute metadata into a survey spec and an empty response template. | `conjoint.generate_questionnaire`, `survey.py` |
+| 2 | Survey Setup + Questionnaire Generator | Creates the survey-question workbook and turns attribute metadata into a survey spec. | `survey_setup_bundle/survey_setup.py`, `conjoint.generate_questionnaire`, `survey.py` |
 | 3 | Conjoint Computation | Estimates part-worth utilities and relative importance from the survey answers. | `conjoint.estimate`, `conjoint.acbc.estimate` |
 | 4 | Weighted Distance | Re-scales each attribute by its importance before computing distances. | `compute_distance_matrix.py --mode weighted` |
 | 5 | Comparative Dashboard | Shows the technical and customer-weighted views side by side. | `app.py`, `results_app.py` |
@@ -60,6 +60,9 @@ extends it with the conjoint layer.
                                               ▼
                                   preprocessed_output.csv
                             ┌─────────────────┴──────────────────┐
+                            |                                    |
+                            |                                    ▼
+                            |                            survey_setup.py       
        compute_distance_    │                                    │  conjoint.generate_questionnaire (M2)
        matrix.py (M1 tech)  ▼                                    ▼
                   distance_matrix.csv                    questionnaire_spec.json
@@ -103,10 +106,21 @@ own:
 
 ---
 
-## The three apps
+## The Streamlit apps
 
-The project ships three independent Streamlit apps. They are decoupled on purpose:
-analysts and survey respondents use different URLs.
+The project ships three main Streamlit apps plus a small setup helper. They are
+decoupled on purpose: analysts and survey respondents use different URLs.
+
+### Optional survey setup helper, `survey_setup_bundle/survey_setup.py`
+
+```bash
+python -m streamlit run survey_setup_bundle/survey_setup.py
+```
+
+Use this before launching the respondent survey when you need to create the
+active `survey_questions.xlsx`. It asks for a product name and six Section C
+features, lets you review the generated prompts, and saves the workbook that
+`survey.py` reads by default.
 
 ### 1. Portfolio dashboard, `app.py`
 
@@ -335,6 +349,7 @@ The weighted run adds `distance_matrix_weighted.csv` and
 Distance-Analysis/
 ├── app.py                      # Module 5: portfolio dashboard (technical | weighted)
 ├── survey.py                   # Module 2: respondent questionnaire app
+├── survey_setup_bundle/        # optional setup app for survey_questions.xlsx
 ├── results_app.py              # conjoint results dashboard (MNL + HB)
 ├── preprocessing.py            # Module 1: universal Feature_data-driven preprocessor
 ├── compute_distance_matrix.py  # Modules 1/4: technical and weighted distance
