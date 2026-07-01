@@ -554,9 +554,9 @@ def fit_hb(
     attribute_levels: Mapping[str, Sequence[str]] | None = None,
     n_iter: int = 10000,
     burn_in: int = 1000,
-    thinning: int = 2,
+    thinning: int = 10,
     n_chains: int = 2,
-    step_scale: float = 0.05,
+    step_scale: float = 0.3,
     prior_cov_scale: float = 4.0,
     seed: int | None = None,
 ) -> HBFit:
@@ -606,10 +606,17 @@ def fit_hb(
     sigma_means: list[np.ndarray] = []  # per-chain mean of the Σ draws
     rng_master = np.random.default_rng(seed)
 
+    # ---- MLE warm-start: compute population MLE once for all chains ----
+    try:
+        mle_result = fit_from_responses(df, attribute_levels)
+        mle_beta = mle_result.beta
+    except Exception:
+        mle_beta = np.zeros(n_features)
+
     for chain in range(n_chains):
         rng = np.random.default_rng(rng_master.integers(0, 2**31 - 1))
-        betas = np.zeros((n_resp, n_features))
-        population_mean = np.zeros(n_features)
+        betas = np.tile(mle_beta, (n_resp, 1))  # start near posterior mode
+        population_mean = mle_beta.copy()
         population_cov = np.eye(n_features) * prior_cov_scale
         population_precision = np.linalg.inv(population_cov)
 
@@ -637,20 +644,26 @@ def fit_hb(
                     accepted_in_window += int(accepted)
                     proposed_in_window += 1
 
-            # μ | β, Σ — conjugate Normal posterior.
+            # μ | β, Σ — conjugate Normal posterior (diagonal Σ).
             beta_mean = betas.mean(axis=0)
-            prior_precision = np.eye(n_features) / prior_cov_scale
-            posterior_precision = prior_precision + n_resp * population_precision
-            posterior_cov = np.linalg.inv(posterior_precision)
-            posterior_mean = posterior_cov @ (n_resp * population_precision @ beta_mean)
-            population_mean = rng.multivariate_normal(posterior_mean, posterior_cov)
+            prior_prec_diag = np.ones(n_features) / prior_cov_scale
+            pop_prec_diag = 1.0 / np.diag(population_cov)
+            post_prec_diag = prior_prec_diag + n_resp * pop_prec_diag
+            post_var_diag = 1.0 / post_prec_diag
+            post_mean = post_var_diag * (n_resp * pop_prec_diag * beta_mean)
+            population_mean = post_mean + np.sqrt(post_var_diag) * rng.standard_normal(n_features)
 
-            # Σ | β, μ — Inverse-Wishart posterior.
+            # σ²_j | β, μ — conjugate Inverse-Gamma posterior (diagonal Σ).
+            # Each feature j is independent: shape = (n_resp + prior_df) / 2,
+            # scale = (Σ_i (β_ij − μ_j)² + prior_scale) / 2.
             centred = betas - population_mean
-            scatter = centred.T @ centred + np.eye(n_features)
-            df_iw = n_resp + n_features + 2
-            population_cov = _sample_inverse_wishart(scatter, df_iw, rng)
-            population_precision = np.linalg.inv(population_cov)
+            ss_per_feature = np.sum(centred ** 2, axis=0)  # (n_features,)
+            ig_shape = (n_resp + 3.0) / 2.0  # prior df = 3
+            ig_scale = (ss_per_feature + 1.0) / 2.0  # prior scale = 1
+            # sample σ²_j ~ Inv-Gamma(shape, scale) via 1 / Gamma(shape, 1/scale)
+            variances = 1.0 / rng.gamma(ig_shape, 1.0 / ig_scale)
+            population_cov = np.diag(variances)
+            population_precision = np.diag(1.0 / variances)
 
             if step < adapt_until and (step + 1) % adapt_interval == 0 and proposed_in_window:
                 acceptance_rate = accepted_in_window / proposed_in_window
