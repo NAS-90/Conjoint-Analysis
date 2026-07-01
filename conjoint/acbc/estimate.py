@@ -509,18 +509,32 @@ def _respondent_blocks(
     return blocks
 
 
+def _safe_cholesky(matrix: np.ndarray) -> np.ndarray:
+    """Cholesky factor with a small jitter fallback for proposal covariance."""
+    eye = np.eye(matrix.shape[0])
+    jitter = 1e-8
+    for _ in range(6):
+        try:
+            return np.linalg.cholesky(matrix + jitter * eye)
+        except np.linalg.LinAlgError:
+            jitter *= 10.0
+    diagonal = np.maximum(np.diag(matrix), jitter)
+    return np.diag(np.sqrt(diagonal))
+
+
 def _propose_beta(
     current: np.ndarray, X: np.ndarray, y: np.ndarray, groups: np.ndarray,
     population_mean: np.ndarray, population_precision: np.ndarray,
-    step_scale: float, rng: np.random.Generator,
-) -> np.ndarray:
+    proposal_chol: np.ndarray, step_scale: float, rng: np.random.Generator,
+) -> tuple[np.ndarray, bool]:
     """One Metropolis-Hastings step for one respondent's β.
 
-    Random-walk proposal with isotropic covariance ``step_scale^2 * I``;
-    target is the MNL likelihood times a multivariate-normal prior at
-    ``population_mean``.
+    Random-walk proposal shaped by the current population covariance; target is
+    the MNL likelihood times a multivariate-normal prior at ``population_mean``.
+    Returns the next β and whether the proposal was accepted so the caller can
+    tune ``step_scale`` during burn-in.
     """
-    proposal = current + step_scale * rng.standard_normal(current.shape[0])
+    proposal = current + step_scale * (proposal_chol @ rng.standard_normal(current.shape[0]))
 
     def log_target(beta: np.ndarray) -> float:
         ll = mnl_log_likelihood(beta, X, y, groups)
@@ -530,19 +544,19 @@ def _propose_beta(
 
     log_ratio = log_target(proposal) - log_target(current)
     if np.log(rng.uniform()) < log_ratio:
-        return proposal
-    return current
+        return proposal, True
+    return current, False
 
 
 def fit_hb(
     df: pd.DataFrame,
     *,
     attribute_levels: Mapping[str, Sequence[str]] | None = None,
-    n_iter: int = 2000,
+    n_iter: int = 10000,
     burn_in: int = 1000,
-    thinning: int = 5,
+    thinning: int = 2,
     n_chains: int = 2,
-    step_scale: float = 0.5,
+    step_scale: float = 0.05,
     prior_cov_scale: float = 4.0,
     seed: int | None = None,
 ) -> HBFit:
@@ -567,6 +581,8 @@ def fit_hb(
         raise ValueError("thinning must be >= 1")
     if n_chains < 2:
         raise ValueError("n_chains must be >= 2 for Rhat")
+    if step_scale <= 0:
+        raise ValueError("step_scale must be positive")
 
     level_map = _level_map_from_frame(
         df[df[STAGE_COL] == STAGE_TOURNAMENT], attribute_levels
@@ -600,15 +616,26 @@ def fit_hb(
         kept_betas: list[np.ndarray] = []  # post-burn-in β snapshots
         kept_mu: list[np.ndarray] = []
         kept_sigma: list[np.ndarray] = []  # post-burn-in Σ (Inverse-Wishart) draws
+        # Keep adaptation simple: tune one chain-level proposal scale during
+        # early burn-in, then freeze it before retaining posterior samples.
+        chain_step_scale = float(step_scale)
+        accepted_in_window = 0
+        proposed_in_window = 0
+        adapt_interval = 50
+        adapt_until = burn_in // 2
 
         for step in range(n_iter):
             # Respondent βs (Metropolis).
+            proposal_chol = _safe_cholesky(population_cov)
             for i, (_, X, y, groups) in enumerate(blocks):
-                betas[i] = _propose_beta(
+                betas[i], accepted = _propose_beta(
                     betas[i], X, y, groups,
                     population_mean, population_precision,
-                    step_scale, rng,
+                    proposal_chol, chain_step_scale, rng,
                 )
+                if step < adapt_until:
+                    accepted_in_window += int(accepted)
+                    proposed_in_window += 1
 
             # μ | β, Σ — conjugate Normal posterior.
             beta_mean = betas.mean(axis=0)
@@ -624,6 +651,18 @@ def fit_hb(
             df_iw = n_resp + n_features + 2
             population_cov = _sample_inverse_wishart(scatter, df_iw, rng)
             population_precision = np.linalg.inv(population_cov)
+
+            if step < adapt_until and (step + 1) % adapt_interval == 0 and proposed_in_window:
+                acceptance_rate = accepted_in_window / proposed_in_window
+                if acceptance_rate < 0.05:
+                    chain_step_scale *= 0.5
+                elif acceptance_rate < 0.2:
+                    chain_step_scale *= 0.8
+                elif acceptance_rate > 0.45:
+                    chain_step_scale *= 1.2
+                chain_step_scale = min(max(chain_step_scale, 1e-3), 5.0)
+                accepted_in_window = 0
+                proposed_in_window = 0
 
             if step >= burn_in and (step - burn_in) % thinning == 0:
                 kept_betas.append(betas.copy())

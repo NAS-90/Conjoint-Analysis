@@ -44,9 +44,9 @@ ROOT = Path(__file__).resolve().parent.parent
 
 #: HB sampler settings baked into the client dashboard. The MCMC iteration
 #: count and random seed are technical knobs, so they are not exposed in the
-#: UI: 2000 iterations typically converges (Rhat < 1.1) and the fixed seed
+#: UI: 4000 iterations gives the sampler more room to converge when Rhat is high
 #: keeps the read-out reproducible. The result is cached per dataset.
-HB_ITERATIONS = 2000
+HB_ITERATIONS = 10000
 HB_SEED = 0
 
 
@@ -480,7 +480,7 @@ def _render_overview(st, results: SurveyResults) -> None:
     col3.metric(
         "HB convergence (Rhat max)",
         f"{results.rhat_max:.2f}",
-        help="Gelman-Rubin diagnostic; values below 1.1 indicate the Hierarchical Bayes model has converged.",
+        help="Largest Gelman-Rubin diagnostic across fitted utility coefficients; values below 1.1 indicate the Hierarchical Bayes model has converged.",
     )
     fg, bg = ("#16A34A", "#DCFCE7") if converged else ("#B45309", "#FEF3C7")
     label = "✓ Converged" if converged else "≈ Approximate (Rhat ≥ 1.1)"

@@ -328,7 +328,14 @@ def analyze_survey_results(
     importance = estimate.attribute_importance(mnl)
     rescaled = estimate.rescale_zero_centered_diffs(level_utilities)
 
-    hb = estimate.fit_hb(df, n_iter=hb_iter, burn_in=hb_iter // 2, thinning=2, n_chains=2, seed=seed)
+    hb = estimate.fit_hb(
+        df,
+        n_iter=hb_iter,
+        burn_in=hb_iter // 2,
+        thinning=2,
+        n_chains=2,
+        seed=seed,
+    )
     hb_utilities = estimate.hb_to_utilities(hb)
     level_map = OrderedDict((attr, tuple(levels)) for attr, levels in hb.level_map.items())
     rhat_max = float(np.nanmax(hb.rhat)) if hb.rhat.size else float("nan")
