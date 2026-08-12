@@ -31,6 +31,7 @@ from conjoint.acbc.responses import (
     TASK_ID_COL,
     read_acbc_responses,
 )
+from dashboard import hb_settings
 
 LevelUtilities = "OrderedDict[str, OrderedDict[str, float]]"
 
@@ -69,13 +70,18 @@ def analyze_responses(
     *,
     price_attribute: str = synthetic.PRICE_ATTRIBUTE,
     price_order: tuple[str, ...] = synthetic.PRICE_ORDER,
-    hb_iter: int = 400,
-    seed: int = 0,
+    hb_iter: int = hb_settings.HB_ITERATIONS,
+    seed: int = hb_settings.HB_SEED,
 ) -> AcbcAnalysis:
     """Fit MNL + HB and assemble importance / diagnostics / per-respondent RLH.
 
     Pure and deterministic given ``seed`` — no Streamlit dependency, so it can
     be unit-tested and reused by the report exporter.
+
+    ``hb_iter`` defaults to the converged budget rather than a fast preview: the
+    quality screen turns per-respondent β into keep/drop calls, so an
+    unconverged fit would drop the wrong respondents. Tests and spot-checks can
+    pass :data:`dashboard.hb_settings.HB_PREVIEW_ITERATIONS` instead.
     """
     mnl = estimate.fit_from_responses(df)
     level_utilities = estimate.beta_to_level_utilities(
@@ -95,7 +101,12 @@ def analyze_responses(
         )
 
     hb = estimate.fit_hb(
-        df, n_iter=hb_iter, burn_in=hb_iter // 2, thinning=2, n_chains=2, seed=seed
+        df,
+        n_iter=hb_iter,
+        burn_in=hb_iter // 2,
+        thinning=hb_settings.HB_THINNING,
+        n_chains=2,
+        seed=seed,
     )
     rlh = estimate.per_respondent_rlh_hb(df, hb)
 

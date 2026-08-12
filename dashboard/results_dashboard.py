@@ -37,17 +37,18 @@ from conjoint.acbc.responses import (
     read_responses_dir,
 )
 from dashboard import chart_theme as theme
+from dashboard import hb_settings
 from dashboard.exporting import download_workbook_button, render_chart
 from dashboard.results_analysis import SurveyResults, analyze_survey_results
 
 ROOT = Path(__file__).resolve().parent.parent
 
-#: HB sampler settings baked into the client dashboard. The MCMC iteration
-#: count and random seed are technical knobs, so they are not exposed in the
-#: UI: 4000 iterations gives the sampler more room to converge when Rhat is high
-#: keeps the read-out reproducible. The result is cached per dataset.
-HB_ITERATIONS = 20000
-HB_SEED = 0
+#: HB sampler settings baked into the client dashboard. The MCMC iteration count
+#: and random seed are technical knobs, so they are not exposed in the UI. They
+#: live in :mod:`dashboard.hb_settings` because the quality-diagnostics page has
+#: to fit the same model with the same budget. The result is cached per dataset.
+HB_ITERATIONS = hb_settings.HB_ITERATIONS
+HB_SEED = hb_settings.HB_SEED
 
 
 # ---------------------------------------------------------------------------

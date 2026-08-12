@@ -39,6 +39,7 @@ from conjoint.acbc.responses import (
     STAGE_WTP,
     TASK_ID_COL,
 )
+from dashboard import hb_settings
 
 LevelUtilities = "OrderedDict[str, OrderedDict[str, float]]"
 
@@ -315,8 +316,8 @@ def analyze_survey_results(
     amount_bands: Sequence[tuple[str, str]] | None = None,
     price_labels: Mapping[str, str] | None = None,
     price_attribute: str = "price",
-    hb_iter: int = 400,
-    seed: int = 0,
+    hb_iter: int = hb_settings.HB_ITERATIONS,
+    seed: int = hb_settings.HB_SEED,
 ) -> SurveyResults:
     """Fit MNL + HB and assemble importance / part-worths / WTP / calibration.
 

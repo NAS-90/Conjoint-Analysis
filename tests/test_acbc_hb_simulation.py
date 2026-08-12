@@ -88,7 +88,7 @@ def test_fit_hb_population_cov_is_positive_definite() -> None:
 
     The earlier implementation returned the covariance of the μ *posterior*
     samples, which shrinks toward 0 as the chains converge (and can be
-    singular). The fix averages the per-iteration Inverse-Wishart Σ draws.
+    singular). The fix averages the per-iteration Σ draws.
     """
     df = _simulate(pool_size=60, n_tasks=20, n_respondents=30, seed=61)
     fit = acbc_estimate.fit_hb(
@@ -104,6 +104,25 @@ def test_fit_hb_population_cov_is_positive_definite() -> None:
     # Positive-definite ⇒ Cholesky succeeds and all eigenvalues are > 0.
     np.linalg.cholesky(sigma)
     assert np.all(np.linalg.eigvalsh(sigma) > 0)
+
+
+@pytest.mark.unit
+def test_fit_hb_population_cov_is_diagonal() -> None:
+    """Σ is modelled as diagonal, so cross-feature entries must be exactly 0.
+
+    The sampler draws one Inverse-Gamma variance per feature rather than a full
+    Inverse-Wishart matrix: a full Σ mixes too slowly to reach Rhat < 1.1 at
+    realistic attribute counts. Callers must not read correlations off Σ, and
+    this test pins that contract so it cannot regress silently.
+    """
+    df = _simulate(pool_size=60, n_tasks=20, n_respondents=30, seed=61)
+    fit = acbc_estimate.fit_hb(
+        df, attribute_levels=SPEC,
+        n_iter=300, burn_in=150, thinning=2, n_chains=2, seed=61,
+    )
+    sigma = fit.population_cov
+    off_diagonal = sigma - np.diag(np.diag(sigma))
+    assert np.count_nonzero(off_diagonal) == 0, off_diagonal
 
 
 @pytest.mark.unit
