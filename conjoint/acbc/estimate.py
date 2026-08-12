@@ -563,14 +563,25 @@ def fit_hb(
     """Hierarchical-Bayes fit via Metropolis-within-Gibbs (pure numpy).
 
     Hierarchy:
-        β_i ~ Normal(μ, Σ)              # respondent-level
-        μ   ~ Normal(0, prior_cov_scale·I)   # weak prior on the mean
-        Σ   ~ Inverse-Wishart(I, n_features + 2)   # weak prior on the cov
+        β_i  ~ Normal(μ, Σ)                   # respondent-level
+        μ    ~ Normal(0, prior_cov_scale·I)   # weak prior on the mean
+        σ²_j ~ Inverse-Gamma(3/2, 1/2)        # weak prior on each variance
+
+    Σ is constrained to be *diagonal*: every feature carries its own
+    heterogeneity variance σ²_j, and cross-feature correlations are assumed
+    away. A full Inverse-Wishart Σ mixes far too slowly to reach Rhat < 1.1 at
+    realistic attribute counts, so :attr:`HBFit.population_cov` is diagonal by
+    construction and its off-diagonal entries are always exactly 0.
 
     Sampling alternates:
-        1. β_i | μ, Σ, data — Metropolis step per respondent.
-        2. μ    | β, Σ      — conjugate Normal update.
-        3. Σ    | β, μ      — conjugate Inverse-Wishart update.
+        1. β_i  | μ, Σ, data: Metropolis step per respondent. The random-walk
+           proposal is shaped by the current Σ, and its step scale is tuned
+           over the first half of burn-in toward a 20-45% acceptance rate.
+        2. μ    | β, Σ: conjugate Normal update, one draw per feature.
+        3. σ²_j | β, μ: conjugate Inverse-Gamma update, one draw per feature.
+
+    Chains start from the pooled MNL maximum-likelihood β, so they begin near
+    the posterior mode instead of at 0.
 
     Returns posterior-mean β per respondent + population (μ, Σ) and a
     Gelman-Rubin Rhat per feature across chains.
@@ -606,12 +617,28 @@ def fit_hb(
     sigma_means: list[np.ndarray] = []  # per-chain mean of the Σ draws
     rng_master = np.random.default_rng(seed)
 
-    # ---- MLE warm-start: compute population MLE once for all chains ----
+    # ---- MLE warm-start: compute the pooled MNL fit once for all chains ----
+    # Best-effort by design: if the MLE fails (singular design, optimiser
+    # divergence) or disagrees on the feature count, the chains still converge
+    # from 0, just more slowly. Catch broadly so a warm-start problem can never
+    # break the fit, but log it so it is never swallowed silently.
+    mle_beta = np.zeros(n_features)
     try:
-        mle_result = fit_from_responses(df, attribute_levels)
-        mle_beta = mle_result.beta
-    except Exception:
-        mle_beta = np.zeros(n_features)
+        candidate = fit_from_responses(df, attribute_levels).beta
+    except Exception:  # noqa: BLE001 - warm-start is optional, see above
+        logger.warning(
+            "HB warm-start: pooled MNL fit failed, starting chains from zero.",
+            exc_info=True,
+        )
+    else:
+        if candidate.shape == (n_features,):
+            mle_beta = candidate
+        else:
+            logger.warning(
+                "HB warm-start: pooled MNL returned %d features but the sampler "
+                "expects %d, starting chains from zero.",
+                candidate.shape[0], n_features,
+            )
 
     for chain in range(n_chains):
         rng = np.random.default_rng(rng_master.integers(0, 2**31 - 1))
@@ -622,7 +649,7 @@ def fit_hb(
 
         kept_betas: list[np.ndarray] = []  # post-burn-in β snapshots
         kept_mu: list[np.ndarray] = []
-        kept_sigma: list[np.ndarray] = []  # post-burn-in Σ (Inverse-Wishart) draws
+        kept_sigma: list[np.ndarray] = []  # post-burn-in Σ (Inverse-Gamma) draws
         # Keep adaptation simple: tune one chain-level proposal scale during
         # early burn-in, then freeze it before retaining posterior samples.
         chain_step_scale = float(step_scale)
@@ -690,12 +717,12 @@ def fit_hb(
 
     chain_population = np.stack([samples.mean(axis=0) for samples in population_samples_all])
     population_mean = chain_population.mean(axis=0)
-    # Heterogeneity covariance Σ — the *between-respondent* covariance the
-    # hierarchy actually models. We average the per-iteration Inverse-Wishart
-    # draws (``_sample_inverse_wishart``) over the post-burn-in samples and
-    # across chains. (The earlier implementation returned ``cov`` of the μ
-    # *posterior* samples, which shrinks toward 0 as the chains converge and is
-    # not the heterogeneity Σ at all.)
+    # Heterogeneity covariance Σ, i.e. the *between-respondent* covariance the
+    # hierarchy actually models. We average the per-iteration diagonal
+    # Inverse-Gamma draws over the post-burn-in samples and across chains, so
+    # the result stays diagonal. (The earlier implementation returned ``cov`` of
+    # the μ *posterior* samples, which shrinks toward 0 as the chains converge
+    # and is not the heterogeneity Σ at all.)
     population_cov = np.mean(np.stack(sigma_means), axis=0)
 
     rhat = _gelman_rubin(population_samples_all)
@@ -712,20 +739,6 @@ def fit_hb(
         column_names=columns,
         level_map=level_map,
     )
-
-
-def _sample_inverse_wishart(scatter: np.ndarray, df_iw: int, rng: np.random.Generator) -> np.ndarray:
-    """Sample from an inverse-Wishart via Bartlett decomposition."""
-    p = scatter.shape[0]
-    L = np.linalg.cholesky(np.linalg.inv(scatter))
-    A = np.zeros((p, p))
-    for i in range(p):
-        A[i, i] = np.sqrt(rng.chisquare(df_iw - i))
-        for j in range(i):
-            A[i, j] = rng.standard_normal()
-    LA = L @ A
-    wishart = LA @ LA.T
-    return np.linalg.inv(wishart)
 
 
 def _gelman_rubin(chains: list[np.ndarray]) -> np.ndarray:
