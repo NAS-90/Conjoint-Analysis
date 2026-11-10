@@ -5,6 +5,7 @@ os.chdir(ROOT)
 sys.path.insert(0, ROOT)
 import streamlit as st
 import munvest_theme as mv
+import munvest_pages as mp
 
 PY = sys.executable
 mv.install("Munvest Conjoint & Distance Analysis")
@@ -62,13 +63,16 @@ def results_page():
     mv.footer()
 
 def distance_page():
-    runpy.run_path(os.path.join(ROOT, "app.py"), run_name="__main__")
+    runpy.run_path(os.path.join(ROOT, "app.py"), run_name="__distance__")
 
 with st.spinner("First start: preparing demo data (1-2 minutes)..."):
     _prepare()
 
 pg = st.navigation([
-    st.Page(results_page, title="Conjoint Results", default=True),
+    st.Page(lambda: mp.intro_page(True), title="Start here", url_path="start", default=True),
+    st.Page(lambda: mp.overview_page(True), title="Portfolio Overview", url_path="overview"),
+    st.Page(results_page, title="Conjoint Results", url_path="conjoint"),
     st.Page(distance_page, title="Distance Analysis", url_path="distance"),
+    st.Page(lambda: mp.guide_page(True), title="Build your own study", url_path="guide"),
 ])
 pg.run()
