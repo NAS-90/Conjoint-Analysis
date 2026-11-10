@@ -590,7 +590,8 @@ def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
     left, right = st.columns(2)
 
     with left:
-        st.markdown("**Stated WTP**: how much extra respondents will pay for an upgrade")
+        st.markdown("**Stated WTP**: extra amount respondents say they pay")
+        st.caption("Modal band = most frequently chosen extra-payment band.")
         if results.wtp is None:
             st.info("This dataset has no willingness-to-pay records.")
         else:
@@ -604,7 +605,7 @@ def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
                         "Mean premium ($)": (f"${fw.mean_usd:,.0f}" if fw.mean_usd is not None else "-"),
                     }
                 )
-            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True, height=300)
             feature_ids = list(results.wtp.features.keys())
             picked = st.selectbox(
                 "View band distribution for a feature",
@@ -634,7 +635,7 @@ def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
             render_chart(st, fig, filename=f"wtp_bands_{picked}")
 
     with right:
-        st.markdown("**Derived WTP**: dollar value converted from the price part-worth utilities")
+        st.markdown("**Derived WTP**: dollar value from price part-worths")
         derived = results.derived_wtp
         if not derived.available:
             st.info(f"Monetary WTP cannot be derived: {derived.note}.")
@@ -650,6 +651,7 @@ def _render_wtp(st, results: SurveyResults, ctx: SurveyContext) -> None:
                 table[["Attribute", "Level", "Value vs. worst level ($)"]],
                 hide_index=True,
                 use_container_width=True,
+                height=300,
             )
 
 
@@ -668,6 +670,7 @@ def _render_simulator(st, results: SurveyResults, ctx: SurveyContext) -> None:
     import plotly.express as px
 
     st.subheader("Market simulator")
+    st.markdown('<span style="background:#1e6fd9;color:#fff;font-size:.66rem;font-weight:700;letter-spacing:.08em;border-radius:20px;padding:.1rem .55rem">INTERACTIVE</span> <b>Configure the products and see the predicted market shares</b>', unsafe_allow_html=True)
     st.caption("Configure competing products and compute share of preference from each respondent's HB utilities.")
 
     n_products = int(st.number_input("Number of products", min_value=2, max_value=4, value=2, step=1))
