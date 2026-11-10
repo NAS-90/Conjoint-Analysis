@@ -35,6 +35,11 @@ st.set_page_config(page_title="Strategic Product Optimizer", layout="wide")
 _mv.header("Portfolio Distance Analysis")
 st.title("Product Portfolio Analysis")
 st.caption("How similar are your products in the eyes of the market? Identify cannibalisation, overlap and white space across the portfolio.")
+_mp.agenda([("Assessment", "Traffic-light verdict for the selected product; choose the product in the sidebar", True),
+            ("Visual analytics", "Closest neighbours and the distribution of all distances", False),
+            ("Product map", "2D/3D map of the portfolio and a direct feature comparison", True),
+            ("Simulation: product removal", "What happens if you drop products from the range", True)])
+st.markdown('<div class="mv-note"><b>Demo data:</b> the portfolios shown are public demonstration data, for illustration only.</div>', unsafe_allow_html=True)
 
 # Sidebar for category selection. "Conjoint Demo" carries real conjoint
 # attributes (weighted by the published N=381 study), so it is the dataset whose
@@ -334,7 +339,7 @@ if os.path.exists(nn_path):
             if len(pre_pca) == len(dm):
                 pre_pca.index = dm.index
 
-            _mp.explain("A 2D map of the portfolio: every dot is a product; the selected product and its closest neighbours are highlighted.", "Products close together are similar. Empty areas are white space. Axes are combinations of features (PCA) and have no unit; the axis labels show how much of the variation each axis keeps.")
+            _mp.explain("A 2D map of the portfolio: every dot is a product; the selected product and its closest neighbours are highlighted.", "Products close together are similar. Empty areas are white space. Axes are combinations of features (PCA) and have no unit; the axis labels show how much of the variation each axis keeps.", interactive="Choose the features that shape the map")
             # 2D PCA
             emb_df_2d = compute_pca_embedding(pre_pca, list(dm.index), n_components=2)
             st.plotly_chart(
@@ -363,7 +368,7 @@ if os.path.exists(nn_path):
                 st.info("Select at least 3 numeric features to display the 3D PCA view.")
         # 4) Raw feature scatter with user-defined axes
         st.markdown("### Compare two features directly")
-        _mp.explain("Every product plotted by two features you choose; the selected product and its neighbours are highlighted.", "Use it to see in plain terms why two products are close, e.g. same price and same performance.")
+        _mp.explain("Every product plotted by two features you choose; the selected product and its neighbours are highlighted.", "Use it to see in plain terms why two products are close, e.g. same price and same performance.", interactive="Choose both axes")
 
         raw_x = st.selectbox(
             "Select x-axis feature",
@@ -406,7 +411,7 @@ else:
 # --- Task 3: Product Removal Simulation ---
 st.markdown("---")
 st.subheader("Simulation: Product Removal")
-_mp.explain("A what-if tool: remove one or more products and see who would take over their customers.", "Pick products, press <i>Simulate Removal</i>. A small mean substitute distance means customers find a close alternative; large values and listed market gaps mean you would lose customers.")
+_mp.explain("A what-if tool: remove one or more products and see who would take over their customers.", "Pick products, press <i>Simulate Removal</i>. A small mean substitute distance means customers find a close alternative; large values and listed market gaps mean you would lose customers.", interactive="Select products and run the simulation")
 
 from dashboard.simulation import (
     distance_histogram_data,
