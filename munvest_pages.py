@@ -13,6 +13,9 @@ CSS = """
 .mv-step b{color:#e8eef5}.mv-step span{color:#b9c6d4;font-size:.92rem}
 .mv-explain{border-left:3px solid #4f9de8;background:#101822;border-radius:0 8px 8px 0;padding:.6rem .9rem;margin:.3rem 0 .8rem;font-size:.88rem;color:#c8d3df;line-height:1.5}
 .mv-explain b{color:#9fdcff}
+.mv-pill{display:inline-block;background:#1e6fd9;color:#fff;font-size:.66rem;font-weight:700;letter-spacing:.08em;border-radius:20px;padding:.1rem .55rem;margin-right:.3rem}.mv-pill-off{display:inline-block;border:1px solid #2c3a4c;color:#8fa1b5;font-size:.66rem;letter-spacing:.08em;border-radius:20px;padding:.05rem .5rem}
+.mv-agenda{border:1px solid #243040;border-radius:10px;background:#101822;padding:.7rem 1rem;margin:.6rem 0 1.2rem}.mv-ag-t{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:#8fa1b5;margin-bottom:.3rem}.mv-agenda table{width:100%;border-collapse:collapse;font-size:.86rem}.mv-agenda td{padding:.3rem .5rem;border-top:1px solid #1b2430;color:#c8d3df;vertical-align:top}.mv-agenda td:first-child{color:#8fa1b5;width:1.5rem}
+.mv-note{border:1px solid #6b5a22;background:#1d1a0f;border-radius:10px;padding:.7rem 1rem;color:#e6d9a8;font-size:.9rem;margin:.8rem 0}.mv-cta{border:1px solid #1e6fd9;background:linear-gradient(135deg,#102036,#0e1a2b);border-radius:12px;padding:1.1rem 1.3rem;margin:1.2rem 0}.mv-cta h3{margin:0 0 .3rem}.mv-cta a.b{display:inline-block;margin-top:.6rem;background:#1e6fd9;color:#fff!important;padding:.45rem 1.1rem;border-radius:6px;font-weight:600;text-decoration:none}
 .mv-kpi{border:1px solid #243040;border-radius:10px;background:#131a23;padding:.7rem .9rem}.mv-kpi .v{font-size:1.6rem;font-weight:700;color:#e8eef5}.mv-kpi .l{font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:#8fa1b5}
 </style>
 """
@@ -22,12 +25,20 @@ def _css():
     st.markdown(CSS, unsafe_allow_html=True)
 
 
-def explain(what, how=None):
-    """Short 'what you see' box above a visualisation."""
+def explain(what, how=None, interactive=None):
+    """Short 'what you see' box above a visualisation; optional INTERACTIVE marker."""
     h = f"<b>What you see:</b> {what}"
     if how:
         h += f"<br><b>How to read it:</b> {how}"
+    if interactive:
+        h = f'<span class="mv-pill">INTERACTIVE</span> <b>{interactive}</b><br>' + h
     st.markdown(f'<div class="mv-explain">{h}</div>', unsafe_allow_html=True)
+
+
+def agenda(items):
+    """Sub-agenda for a page: items = [(section, description, interactive_bool)]."""
+    rows = "".join(f'<tr><td>{i}</td><td><b>{a}</b></td><td>{b}</td><td>{"<span class=mv-pill>INTERACTIVE</span>" if c else "<span class=mv-pill-off>read-only</span>"}</td></tr>' for i, (a, b, c) in enumerate(items, 1))
+    st.markdown(f'<div class="mv-agenda"><div class="mv-ag-t">On this page</div><table>{rows}</table></div>', unsafe_allow_html=True)
 
 
 def _kpi(col, value, label):
@@ -47,41 +58,68 @@ def _header(sub):
     mv.apply(); _css(); mv.header(sub)
 
 
-def intro_page(has_conjoint=False):
-    _header("Portfolio Intelligence - Start here")
-    st.markdown('<div class="mv-hero"><h2>Is your product portfolio working for your customers?</h2>'
-                '<p>These tools show how similar your products really are, which ones compete with each other, '
-                'where the market has white space &ndash; and, with conjoint analysis, what customers actually value. '
-                'No statistics background needed: every chart comes with a short explanation.</p></div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    _card(c1, "1 &middot; Distance analysis", "Measures how far apart your products are across all their features. Close products compete for the same customer (cannibalisation); large gaps are white space.")
-    _card(c2, "2 &middot; Conjoint analysis", "A short survey in which customers choose between product variants. It reveals which features matter most, what customers will pay extra for, and how a new product would perform.")
-    _card(c3, "3 &middot; Customer-weighted distance", "Combines both: features that customers care about count more. Two phones that look different on paper may still be near-identical for buyers &ndash; and vice versa.")
-    st.markdown("### How to use the dashboards in 3 steps")
-    _step(1, "Choose your data", "Use the sidebar on the left: pick a product category and, where offered, the view (Technical or Customer-weighted).")
-    _step(2, "Start with the overview", "The <i>Portfolio Overview</i> page summarises every category: how many products are near-duplicates, which are unique, and where to look first.")
-    _step(3, "Drill down and decide", "On the analysis pages pick a product, read the traffic-light assessment, explore the charts (each has a &lsquo;what you see&rsquo; box) and simulate removing products from the portfolio.")
-    st.markdown("### Pages in this tool")
-    pages = ["**Start here** &ndash; this introduction and glossary",
-             "**Portfolio Overview** &ndash; structured summary across all categories",
-             "**Distance Analysis** &ndash; product-level neighbours, alerts, product maps, removal simulation"]
-    if has_conjoint:
-        pages.insert(2, "**Conjoint Results** &ndash; attribute importance, part-worths, willingness to pay, market simulator, segments")
-    pages.append("**Build your own study** &ndash; step-by-step guide to preparing product data" + (" and a survey questionnaire" if has_conjoint else ""))
-    st.markdown("\n".join(f"- {p}" for p in pages), unsafe_allow_html=True)
-    with st.expander("Glossary &ndash; key terms in plain language"):
-        st.markdown("""
-- **Distance**: a number describing how different two products are across all (standardised) features. 0 = identical; larger = more different.
-- **Nearest neighbour**: the product closest to a given one &ndash; its most direct substitute.
-- **Cannibalisation**: two of your own products are so similar that they take sales from each other.
-- **White space**: a gap in the portfolio where no product serves a customer need.
-- **Product map (PCA)**: a 2D/3D picture that squeezes many features into a few axes while keeping similar products together.
+TOOLS = {
+    "conjoint": dict(name="Conjoint Analysis", other="Distance Analysis"),
+    "distance": dict(name="Distance Analysis", other="Conjoint Analysis"),
+}
+CONTACT = "https://munvest.com"
+
+
+def _cta(text):
+    st.markdown(f'<div class="mv-cta"><h3>Want this for your own portfolio?</h3><span style="color:#c8d3df">{text}</span><br>'
+                f'<a class="b" href="{CONTACT}" target="_blank" rel="noopener">Talk to Munvest</a></div>', unsafe_allow_html=True)
+
+
+def intro_page(tool="conjoint"):
+    nm = TOOLS[tool]["name"]
+    _header(f"Portfolio Intelligence - {nm} - Start here")
+    if tool == "conjoint":
+        st.markdown('<div class="mv-hero"><h2>What do your customers really value &ndash; and what would they pay for it?</h2>'
+                    '<p>Conjoint analysis lets customers choose between realistic product variants. From a short survey it reveals which features drive '
+                    'decisions, what upgrades are worth, and how a new or changed product would perform against alternatives.</p></div>', unsafe_allow_html=True)
+        st.markdown("### How a conjoint study works")
+        _step(1, "Design", "Your product features and their levels (for example processor: entry / mainstream / performance) are turned into a questionnaire.")
+        _step(2, "Survey", "Each respondent answers background questions, screens out no-gos, makes eight A-vs-B choices, rates purchase likelihood and states willingness to pay (about 8&ndash;10 minutes).")
+        _step(3, "Estimate", "A statistical model (multinomial logit and hierarchical Bayes) converts the choices into attribute importance and part-worth utilities per respondent.")
+        _step(4, "Decide", "Use the market simulator, willingness to pay and segments to configure products, set prices and decide where to invest.")
+        st.markdown('<div class="mv-note"><b>Demo data:</b> all results in this tool are dummy results from 50 simulated respondents. They illustrate the outputs &ndash; they are not market findings.</div>', unsafe_allow_html=True)
+        st.markdown("### Agenda of this tool")
+        agenda([("Start here", "Method, process and glossary", False),
+                ("Portfolio Overview", "Summary of the study: respondents, top drivers, effect on the portfolio", False),
+                ("Conjoint Results", "Importance, part-worths, willingness to pay, market simulator, purchase likelihood, segments", True),
+                ("Your study with Munvest", "What a project looks like and how to start", False)])
+        gl = """
 - **Attribute importance**: how strongly a feature (e.g. price, battery) influences customer choice, in percent.
 - **Part-worth utility**: the appeal of one specific level of a feature (e.g. 16 GB RAM) relative to the others.
 - **Willingness to pay (WTP)**: the extra amount customers would pay for an upgrade.
-- **Hierarchical Bayes (HB)**: the statistical model that estimates preferences per respondent from a small number of choices.
-""")
-    st.caption("All data shown are demonstration data. Your own data can be loaded as described under 'Build your own study'.")
+- **Market simulator**: predicts the share of customers choosing each product in a market you define.
+- **Hierarchical Bayes (HB)**: estimates preferences for every respondent individually, even from few choices.
+- **Segments**: groups of respondents with similar preferences."""
+    else:
+        st.markdown('<div class="mv-hero"><h2>Which of your products compete with each other &ndash; and where is the market empty?</h2>'
+                    '<p>Distance analysis measures how similar your products are across all their features. Near-identical products cannibalise each other, '
+                    'large gaps are white space. Every chart comes with a short explanation.</p></div>', unsafe_allow_html=True)
+        st.markdown("### How a distance analysis works")
+        _step(1, "Collect", "Your products and their features (price, performance, size, brand, &hellip;) in one table.")
+        _step(2, "Standardise", "Features are put on a common scale and weighted by importance &ndash; technically uniform, or by customer preference from a conjoint study.")
+        _step(3, "Measure", "The distance between every pair of products is calculated; the closest products are each product&rsquo;s nearest neighbours.")
+        _step(4, "Decide", "Read the traffic-light assessment, explore the product map and simulate removing products to see who takes over their customers.")
+        st.markdown('<div class="mv-note"><b>Demo data:</b> the portfolios shown (smartphones, tractors) are public demonstration data for illustration &ndash; not your market.</div>', unsafe_allow_html=True)
+        st.markdown("### Agenda of this tool")
+        agenda([("Start here", "Method, process and glossary", False),
+                ("Portfolio Overview", "Health of every portfolio at a glance", False),
+                ("Distance Analysis", "Assessment per product, charts, product maps, removal simulation", True),
+                ("Your study with Munvest", "What a project looks like and how to start", False)])
+        gl = """
+- **Distance**: how different two products are across all (standardised) features. 0 = identical; larger = more different.
+- **Nearest neighbour**: the product closest to a given one &ndash; its most direct substitute.
+- **Cannibalisation**: two of your own products are so similar that they take sales from each other.
+- **White space**: a gap in the portfolio where no product serves a customer need.
+- **Product map (PCA)**: a 2D/3D picture that keeps similar products together.
+- **Customer-weighted view**: features that customers value more count more in the distance."""
+    with st.expander("Glossary &ndash; key terms in plain language"):
+        st.markdown(gl)
+    _cta("A Munvest study is tailored to your products and customers. We design, run and interpret it with you.")
     import munvest_theme as mv; mv.footer()
 
 
@@ -105,7 +143,9 @@ def _label(n):
     return {"conjoint_demo": "Tractors (conjoint demo)"}.get(n, n.replace("_", " ").title())
 
 
-def overview_page(has_conjoint=False):
+def overview_page(tool="distance"):
+    if tool == "conjoint":
+        return _conjoint_overview()
     import plotly.graph_objects as go
     _header("Portfolio Overview")
     st.title("Portfolio overview")
@@ -147,12 +187,9 @@ def overview_page(has_conjoint=False):
     tbl = pd.DataFrame([{"Category": _label(r["name"]), "Products": r["products"], "Median gap to closest sibling": round(r["median"], 2),
                          "Most similar pair": r["pair"], "Pair distance": round(r["pd"], 3), "Most distinctive product": r["uniq"]} for r in rows])
     st.dataframe(tbl, hide_index=True, use_container_width=True)
-    if has_conjoint:
-        _conjoint_block()
+    _conjoint_block()
     st.markdown("### Where to go next")
-    st.markdown("- **Distance Analysis**: pick one of the products above and see its neighbours, alert and product map.\n"
-                + ("- **Conjoint Results**: see what customers value and simulate market shares.\n" if has_conjoint else "")
-                + "- **Build your own study**: load your portfolio" + (" and run your own survey." if has_conjoint else "."))
+    st.markdown("Open **Distance Analysis** in the menu, pick one of the products above and see its neighbours, assessment and product map.")
     mv.footer()
 
 
@@ -180,81 +217,63 @@ def _conjoint_block():
             st.caption(f"{ch/len(j)*100:.0f}% of products change their nearest neighbour in the customer-weighted view.")
 
 
-def guide_page(has_conjoint=False):
-    _header("Build your own study")
-    st.title("Build your own study" if has_conjoint else "Use your own product data")
-    st.caption("A step-by-step guide. Allow about 30 minutes for the first run; later studies take minutes.")
-    st.markdown("### The process at a glance")
-    steps = [("Prepare the product workbook", "One Excel file with your products and their features.")]
-    if has_conjoint:
-        steps += [("Create the questionnaire", "A second Excel file with background questions and willingness-to-pay items."),
-                  ("Collect responses", "Share the survey link; every respondent downloads one response file."),
-                  ("Analyse", "Load the responses: importance, part-worths, market simulator and customer-weighted distance.")]
+def _conjoint_overview():
+    _header("Portfolio Overview")
+    st.title("Study overview")
+    st.caption("The demo study at a glance: who answered, what drives choices and what it means for the portfolio.")
+    n = len(glob.glob("outputs/survey_responses_computers/*.csv"))
+    imp = "outputs/conjoint_demo/importance.csv"
+    k = st.columns(4)
+    _kpi(k[0], n or "50", "Simulated respondents")
+    _kpi(k[1], "8", "Choice tasks per respondent")
+    _kpi(k[2], "6", "Upgrades for willingness to pay")
+    _kpi(k[3], "MNL + HB", "Estimation methods")
+    st.markdown("### What the study delivers")
+    c = st.columns(3)
+    _card(c[0], "Customer priorities", "Which features decide a purchase &ndash; ranked in percent, from price to performance.")
+    _card(c[1], "Value of upgrades", "What a better processor, more memory or longer battery life is worth to customers, in money.")
+    _card(c[2], "Market response", "How a product configuration performs against alternatives and in which customer segments.")
+    _conjoint_block()
+    st.markdown("### Where to go next")
+    st.markdown("Open **Conjoint Results** in the menu for the full analysis, including the interactive market simulator. "
+                "The portfolio view with customer-weighted distances is available in the [Distance Analysis tool](https://munvest-distance.streamlit.app).")
+    import munvest_theme as mv; mv.footer()
+
+
+def guide_page(tool="conjoint"):
+    nm = TOOLS[tool]["name"]
+    _header(f"Your {nm} study with Munvest")
+    st.title(f"Your {nm.lower()} study with Munvest")
+    st.caption("A rough outline of how a study works and what we need from you. The detailed set-up is where our experience matters.")
+    if tool == "conjoint":
+        st.markdown("### What you get")
+        c = st.columns(3)
+        _card(c[0], "Tailored survey", "A questionnaire built around <i>your</i> products, features and customers &ndash; in your language and tone.")
+        _card(c[1], "Reliable results", "Importance, part-worths, willingness to pay, market simulator and segments, delivered as a dashboard like this one.")
+        _card(c[2], "Decisions, not charts", "A workshop in which we turn the results into pricing, portfolio and positioning decisions.")
+        st.markdown("### Rough outline of a project")
+        _step(1, "Scope", "We clarify the decision to support, the products and the customer group. You provide a product and feature list.")
+        _step(2, "Design", "We select the features and levels that matter, define the price range and build the questionnaire.")
+        _step(3, "Field", "We test the survey, recruit or invite respondents and monitor data quality.")
+        _step(4, "Analyse", "We estimate preferences, check model quality and build your dashboard.")
+        _step(5, "Decide", "We present the results and develop recommendations with your team.")
+        st.markdown("### What we need from you")
+        st.markdown("- The decision you want to make (new product, pricing, portfolio clean-up)\n- Your products and their key features\n- Access to customers or a description of the target group")
     else:
-        steps += [("Run the distance calculation", "Two short commands create the distance matrix and nearest neighbours."),
-                  ("Open the dashboard", "Pick your category in the sidebar and explore.")]
-    for i, (t, x) in enumerate(steps, 1):
-        _step(i, t, x)
-    st.markdown("### Step 1 &middot; Prepare the product workbook")
-    st.markdown("Create an Excel file with **two sheets**:")
-    c1, c2 = st.columns(2)
-    _card(c1, "Sheet <code>Edited</code> &ndash; your data", "One row per product. First column <code>product_id</code> (unique name), then one column per feature (price, weight, brand, &hellip;).")
-    _card(c2, "Sheet <code>Feature_data</code> &ndash; the dictionary", "One row per column of <code>Edited</code>, describing how to treat it (type, direction, importance, units, conjoint levels).")
-    explain("The columns of <code>Feature_data</code>.", "Fill one row per feature; dropdowns in the template help with the allowed values.")
-    spec = pd.DataFrame([
-        ("feature_name", "Exact column name in <i>Edited</i>", "price"),
-        ("description", "Plain-language explanation", "Retail price"),
-        ("data_types", "text, nominal (categories), metric (numbers)", "metric"),
-        ("included_in_analysis", "yes / no &ndash; whether the feature enters the distance", "yes"),
-        ("normalization_method", "How values are put on a common scale", "z-score"),
-        ("ideal_direction", "higher, lower or neutral &ndash; what customers prefer", "lower"),
-        ("weight_importance", "Technical weight: low / medium / high", "high"),
-        ("unit, value_min, value_max", "Unit and valid range (optional, used for cleaning)", "EUR, 1000, 300000"),
-        ("conjoint_role", "identifier, attribute (asked in the survey) or skip", "attribute"),
-        ("conjoint_levels", "Levels shown to respondents, separated by semicolons", "basic; standard; premium"),
-        ("conjoint_level_codes", "Matching codes for the levels", "basic; standard; premium"),
-    ], columns=["Column", "Meaning", "Example"])
-    st.markdown(spec.to_html(escape=False, index=False, classes="mv-t"), unsafe_allow_html=True)
-    st.markdown("""<style>table.mv-t{width:100%;border-collapse:collapse;font-size:.86rem}table.mv-t th{text-align:left;color:#8fa1b5;border-bottom:1px solid #243040;padding:.4rem}table.mv-t td{padding:.4rem;border-bottom:1px solid #1b2430;color:#c8d3df}</style>""", unsafe_allow_html=True)
-    _dl("Download product workbook template", "templates/feature_schema_template.xlsx", "templates/custom_product_template.xlsx")
-    if has_conjoint:
-        st.markdown("### Step 2 &middot; Create the questionnaire")
-        st.markdown("The survey is generated from your workbook automatically &ndash; every feature with <code>conjoint_role = attribute</code> becomes part of the choice tasks. "
-                    "What you add is the <b>question workbook</b> with background and willingness-to-pay questions:", unsafe_allow_html=True)
-        qs = pd.DataFrame([
-            ("section", "A = background question, C = upgrade for willingness to pay, bands = price bands for C", "A"),
-            ("id", "Short unique name", "budget"),
-            ("prompt", "The question as respondents read it", "Roughly what budget do you have in mind?"),
-            ("input_type", "single (one answer) or multi (several)", "single"),
-            ("options", "Answer options separated by semicolons", "Under $600; $600 - $1 200; Over $1 200"),
-            ("help", "Optional hint under the question", "Choose all that apply."),
-        ], columns=["Column", "Meaning", "Example"])
-        explain("The columns of the sheet <code>Survey_questions</code>.", "Add as many section A questions as you need; keep section C to about six upgrades.")
-        st.markdown(qs.to_html(escape=False, index=False, classes="mv-t"), unsafe_allow_html=True)
-        _dl("Download question workbook template", "survey_setup_bundle/Input_template/survey_questions_template.xlsx")
-        st.markdown("**What respondents experience** (about 8&ndash;10 minutes):")
-        flow = pd.DataFrame([
-            ("Welcome", "Purpose and optional respondent ID"), ("Part A", "Background: purchase timing, budget, usage"),
-            ("B0", "Features and levels explained"), ("B2", "Must-haves and no-goes (screening)"),
-            ("B4", "8 choice tasks: Option A vs. Option B"), ("B5", "Purchase probability 0&ndash;5 for three concepts"),
-            ("Part C", "Willingness to pay for upgrades"), ("Thank you", "Respondent downloads and sends the response file")],
-            columns=["Stage", "What happens"])
-        st.markdown(flow.to_html(escape=False, index=False, classes="mv-t"), unsafe_allow_html=True)
-        st.markdown("### Step 3 &middot; Collect responses")
-        _step(1, "Start the survey app", "Locally: <code>SURVEY_SPEC=questionnaire_spec.json SURVEY_WORKBOOK=survey_questions.xlsx streamlit run survey.py</code>. For customers, deploy <code>survey.py</code> on Streamlit Community Cloud and share the link.")
-        _step(2, "Each respondent sends one file", "<code>responses_&lt;id&gt;.csv</code>, produced by the &lsquo;Send my responses&rsquo; button.")
-        _step(3, "Aim for 30&ndash;50 respondents or more", "More respondents give stabler importance and willingness-to-pay values. Check the HB convergence indicator on the results page.")
-        st.markdown("### Step 4 &middot; Analyse")
-        _step(1, "Load the files", "Place them in <code>outputs/survey_responses_&lt;product&gt;/</code> or use <i>Upload questionnaires</i> in the sidebar of <i>Conjoint Results</i>.")
-        _step(2, "Read the results", "Attribute importance, part-worths, willingness to pay, market simulator, purchase likelihood and segments appear automatically; the Excel export contains every table.")
-        _step(3, "Feed the weights into the distance analysis", "<code>python -m conjoint.acbc.estimate --responses acbc_responses.csv --out-importance importance.csv</code>, then <code>python compute_distance_matrix.py --mode weighted --importance importance.csv --attribute-map attribute_column_map.json</code>.")
-    else:
-        st.markdown("### Step 2 &middot; Calculate distances")
-        _step(1, "Preprocess", "<code>python preprocessing.py --excel your_file.xlsx</code>")
-        _step(2, "Compute the distance matrix", "<code>python compute_distance_matrix.py --excel your_file.xlsx</code>, then move the generated CSVs into <code>outputs/your_dataset/</code>.")
-        _step(3, "Open the dashboard", "Your dataset appears in the category list. Customer-weighted views and surveys are available in the Conjoint tool: <a href='https://munvest-conjoint.streamlit.app' target='_blank'>munvest-conjoint.streamlit.app</a>.")
-    st.markdown("### Tips for good results")
-    st.markdown("- Use **4&ndash;8 attributes** with 2&ndash;5 levels each; include price as an attribute for willingness-to-pay.\n- Describe levels in customer language, not internal jargon.\n- Use unique, readable product IDs &ndash; they appear in every chart.\n- Need help? Contact Munvest via <a href='https://munvest.com' target='_blank'>munvest.com</a>.", unsafe_allow_html=True)
+        st.markdown("### What you get")
+        c = st.columns(3)
+        _card(c[0], "Portfolio X-ray", "A clear picture of which products overlap, which stand alone and where the market is empty.")
+        _card(c[1], "Customer-weighted view", "Optionally combined with a conjoint study, so similarity reflects what customers value.")
+        _card(c[2], "Decision support", "Removal and what-if simulations that show the effect of portfolio changes before you make them.")
+        st.markdown("### Rough outline of a project")
+        _step(1, "Scope", "We define the portfolio and the question: clean-up, new product, pricing corridor.")
+        _step(2, "Data", "We build the product data set from your sources and public data, and agree which features count.")
+        _step(3, "Analyse", "We compute distances, assess every product and map the portfolio.")
+        _step(4, "Decide", "We discuss the findings and simulate portfolio changes with your team.")
+        st.markdown("### What we need from you")
+        st.markdown("- The product list with key features (an export is enough)\n- The questions you want answered\n- Optionally, results of a customer survey")
+    _cta("Tell us about your portfolio and your decision &ndash; we will propose a study design and scope.")
+    st.caption("Munvest combines consulting experience with analytics tools such as the ones shown here.")
     import munvest_theme as mv; mv.footer()
 
 
@@ -266,19 +285,23 @@ def _dl(label, *paths):
 
 
 def route(name, file):
-    """Turn a plain app.py into a multipage app (returns True if the router ran)."""
+    """Turn a plain app.py into the multipage Distance tool (returns True if the router ran)."""
     if name != "__main__":
         return False
+    return run_distance_nav(file)
+
+
+def run_distance_nav(file):
     import runpy
-    def intro(): intro_page(False)
-    def overview(): overview_page(False)
+    def intro(): intro_page("distance")
+    def overview(): overview_page("distance")
     def distance(): runpy.run_path(file, run_name="__distance__")
-    def guide(): guide_page(False)
+    def guide(): guide_page("distance")
     pg = st.navigation([
-        st.Page(intro, title="Start here", default=True),
+        st.Page(intro, title="Start here", url_path="start", default=True),
         st.Page(overview, title="Portfolio Overview", url_path="overview"),
         st.Page(distance, title="Distance Analysis", url_path="distance"),
-        st.Page(guide, title="Use your own data", url_path="guide"),
+        st.Page(guide, title="Your study with Munvest", url_path="study"),
     ])
     pg.run()
     return True
