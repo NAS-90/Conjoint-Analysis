@@ -40,6 +40,6 @@ pg = st.navigation([
     st.Page(lambda: mp.intro_page("conjoint"), title="Start here", url_path="start", default=True),
     st.Page(lambda: mp.overview_page("conjoint"), title="Portfolio Overview", url_path="overview"),
     st.Page(results_page, title="Conjoint Results", url_path="results"),
-    st.Page(lambda: mp.guide_page("conjoint"), title="Your study with Munvest", url_path="study"),
+    st.Page(lambda: mp.guide_page("conjoint"), title="Your Conjoint Analysis with Munvest", url_path="study"),
 ])
 pg.run()
