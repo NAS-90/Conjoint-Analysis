@@ -87,7 +87,7 @@ def intro_page(tool="conjoint"):
         agenda([("Start here", "Method, process and glossary", False),
                 ("Portfolio Overview", "Summary of the study: respondents, top drivers, effect on the portfolio", False),
                 ("Conjoint Results", "Importance, part-worths, willingness to pay, market simulator, purchase likelihood, segments", True),
-                ("Your study with Munvest", "What a project looks like and how to start", False)])
+                ("Your Conjoint Analysis with Munvest", "What a project looks like and how to start", False)])
         gl = """
 - **Attribute importance**: how strongly a feature (e.g. price, battery) influences customer choice, in percent.
 - **Part-worth utility**: the appeal of one specific level of a feature (e.g. 16 GB RAM) relative to the others.
@@ -109,7 +109,7 @@ def intro_page(tool="conjoint"):
         agenda([("Start here", "Method, process and glossary", False),
                 ("Portfolio Overview", "Health of every portfolio at a glance", False),
                 ("Distance Analysis", "Assessment per product, charts, product maps, removal simulation", True),
-                ("Your study with Munvest", "What a project looks like and how to start", False)])
+                ("Your Distance Analysis with Munvest", "What a project looks like and how to start", False)])
         gl = """
 - **Distance**: how different two products are across all (standardised) features. 0 = identical; larger = more different.
 - **Nearest neighbour**: the product closest to a given one &ndash; its most direct substitute.
@@ -242,8 +242,8 @@ def _conjoint_overview():
 
 def guide_page(tool="conjoint"):
     nm = TOOLS[tool]["name"]
-    _header(f"Your {nm} study with Munvest")
-    st.title(f"Your {nm.lower()} study with Munvest")
+    _header(f"Your {nm} with Munvest")
+    st.title(f"Your {nm} with Munvest")
     st.caption("A rough outline of how a study works and what we need from you. The detailed set-up is where our experience matters.")
     if tool == "conjoint":
         st.markdown("### What you get")
@@ -301,7 +301,7 @@ def run_distance_nav(file):
         st.Page(intro, title="Start here", url_path="start", default=True),
         st.Page(overview, title="Portfolio Overview", url_path="overview"),
         st.Page(distance, title="Distance Analysis", url_path="distance"),
-        st.Page(guide, title="Your study with Munvest", url_path="study"),
+        st.Page(guide, title="Your Distance Analysis with Munvest", url_path="study"),
     ])
     pg.run()
     return True
