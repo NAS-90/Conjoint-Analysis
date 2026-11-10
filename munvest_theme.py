@@ -40,8 +40,10 @@ def plotly_dark(fig):
     )
     fig.update_layout(title_font=dict(color=TXT))
     fig.update_traces(textfont=dict(color=TXT), selector=dict(type="bar"))
-    fig.update_xaxes(gridcolor=LINE, zerolinecolor=LINE, linecolor=LINE, tickfont=dict(color=MUTED))
-    fig.update_yaxes(gridcolor=LINE, zerolinecolor=LINE, linecolor=LINE, tickfont=dict(color=MUTED))
+    fig.update_layout(legend_font_color=TXT, title_font_color=TXT, modebar=dict(bgcolor="rgba(0,0,0,0)", color=MUTED, activecolor=ACC))
+    fig.update_traces(insidetextfont=dict(color=TXT), outsidetextfont=dict(color=TXT), selector=dict(type="bar"))
+    fig.update_xaxes(gridcolor=LINE, zerolinecolor=LINE, linecolor=LINE, tickfont=dict(color=MUTED), automargin=True)
+    fig.update_yaxes(gridcolor=LINE, zerolinecolor=LINE, linecolor=LINE, tickfont=dict(color=MUTED), automargin=True)
     return fig
 
 
@@ -82,12 +84,26 @@ def install(title="Munvest Analytics"):
             pass
         apply()
     st.set_page_config = cfg
+    _orig_pc = st.plotly_chart
+    def _pc(fig, *a, **k):
+        try:
+            plotly_dark(fig)
+            k.setdefault("theme", None)
+        except Exception:
+            pass
+        return _orig_pc(fig, *a, **k)
+    st.plotly_chart = _pc
     st._mv_installed = True
     _patch_plotly()
 
 
 def apply():
     st.markdown(CSS, unsafe_allow_html=True)
+    try:
+        import munvest_pages
+        st.markdown(munvest_pages.CSS, unsafe_allow_html=True)
+    except Exception:
+        pass
 
 
 def header(subtitle):
@@ -95,4 +111,4 @@ def header(subtitle):
 
 
 def footer():
-    st.markdown('<div class="mv-foot">Munvest UG &middot; Munich &middot; Demo data for illustration &middot; <a href="https://munvest.com">munvest.com</a></div>', unsafe_allow_html=True)
+    st.markdown('<div class="mv-foot">Munvest &middot; Munich &middot; Demo data for illustration &middot; <a href="https://munvest.com">munvest.com</a></div>', unsafe_allow_html=True)
