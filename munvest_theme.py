@@ -93,6 +93,19 @@ def install(title="Munvest Analytics"):
             pass
         return _orig_pc(fig, *a, **k)
     st.plotly_chart = _pc
+    try:
+        from streamlit.delta_generator import DeltaGenerator as _DG
+        _orig_dg = _DG.plotly_chart
+        def _dgpc(self, fig, *a, **k):
+            try:
+                plotly_dark(fig)
+                k.setdefault("theme", None)
+            except Exception:
+                pass
+            return _orig_dg(self, fig, *a, **k)
+        _DG.plotly_chart = _dgpc
+    except Exception:
+        pass
     st._mv_installed = True
     _patch_plotly()
 
