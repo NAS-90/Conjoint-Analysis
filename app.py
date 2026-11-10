@@ -1,6 +1,9 @@
 import streamlit as st
 import munvest_theme as _mv
+import munvest_pages as _mp
 _mv.install("Munvest Distance Analysis")
+if _mp.route(__name__, __file__):
+    st.stop()
 import pandas as pd
 import os
 
@@ -304,13 +307,16 @@ if os.path.exists(nn_path):
         topk = results.sort_values("distance").head(10)
         nb_df = topk.iloc[:, [2, -1]].copy()
         nb_df.columns = ["neighbor", "distance"]
+        _mp.explain("The ten products closest to <b>" + str(selected_product) + "</b>, ranked by distance.", "A shorter bar means a more similar product, i.e. a more direct substitute. If the first bars are very short, customers can barely tell the products apart.")
         st.plotly_chart(plot_neighbor_bar(nb_df, selected_product), use_container_width=True)
 
         # 2) Distance histogram
+        _mp.explain("How the distances between <i>all</i> product pairs of the category are distributed.", "Bars on the far left are near-duplicate pairs. A wide, even spread means a diversified portfolio; a tall block on the left means a crowded one.")
         st.plotly_chart(plot_distance_histogram(dm), use_container_width=True)
 
         # 3) Feature selector + 2D / 3D PCA
-        st.markdown("### PCA Feature Selection")
+        st.markdown("### Product map")
+        st.caption("Choose which numeric features shape the map. Fewer features focus the map on what matters to you.")
 
         available_features = get_available_numeric_features(pre_path)
         selected_features = st.multiselect(
@@ -328,6 +334,7 @@ if os.path.exists(nn_path):
             if len(pre_pca) == len(dm):
                 pre_pca.index = dm.index
 
+            _mp.explain("A 2D map of the portfolio: every dot is a product; the selected product and its closest neighbours are highlighted.", "Products close together are similar. Empty areas are white space. Axes are combinations of features (PCA) and have no unit; the axis labels show how much of the variation each axis keeps.")
             # 2D PCA
             emb_df_2d = compute_pca_embedding(pre_pca, list(dm.index), n_components=2)
             st.plotly_chart(
@@ -340,7 +347,8 @@ if os.path.exists(nn_path):
             )
 
             # 3D PCA
-            st.markdown("### 3D PCA View")
+            st.markdown("### 3D product map")
+            _mp.explain("The same map with a third axis for extra detail.", "Drag to rotate, scroll to zoom. Use it to check whether products that look close in 2D are really close.")
             if len(selected_features) >= 3:
                 emb_df_3d = compute_pca_embedding(pre_pca, list(dm.index), n_components=3)
                 st.plotly_chart(
@@ -354,7 +362,8 @@ if os.path.exists(nn_path):
             else:
                 st.info("Select at least 3 numeric features to display the 3D PCA view.")
         # 4) Raw feature scatter with user-defined axes
-        st.markdown("### 2D Raw Feature Comparison")
+        st.markdown("### Compare two features directly")
+        _mp.explain("Every product plotted by two features you choose; the selected product and its neighbours are highlighted.", "Use it to see in plain terms why two products are close, e.g. same price and same performance.")
 
         raw_x = st.selectbox(
             "Select x-axis feature",
@@ -397,6 +406,7 @@ else:
 # --- Task 3: Product Removal Simulation ---
 st.markdown("---")
 st.subheader("Simulation: Product Removal")
+_mp.explain("A what-if tool: remove one or more products and see who would take over their customers.", "Pick products, press <i>Simulate Removal</i>. A small mean substitute distance means customers find a close alternative; large values and listed market gaps mean you would lose customers.")
 
 from dashboard.simulation import (
     distance_histogram_data,
